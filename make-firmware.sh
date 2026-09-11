@@ -70,15 +70,23 @@ fi
 
 mkdir -p "$RK_SDK_DIR/output"
 
-# The build probes sources.buildroot.net and aborts if unreachable. Behind a
-# proxy that check misfires even when downloads work, so retry it once.
+# Run the SDK build. Passing a defconfig does NOT build: build.sh treats a
+# *_defconfig argument as "select this board" and exits after writing
+# output/.config, so a real build has to follow. Do both into one log.
+# The build also probes sources.buildroot.net and aborts if unreachable;
+# behind a proxy that check misfires, so the caller retries it once.
 run_build() {
-	if [ -n "$DEFCONFIG" ]; then
-		./build.sh "$DEFCONFIG"
-	else
-		./build.sh
-	fi
+	{
+		if [ -n "$DEFCONFIG" ]; then
+			./build.sh "$DEFCONFIG" || return 1
+			echo
+			say "Config selected; starting the build proper ..."
+		fi
+		./build.sh || return 1
+	} >> "$LOG" 2>&1
 }
+
+: > "$LOG"
 
 say "=========================================="
 say " Building firmware ($(date +%H:%M:%S))"
@@ -89,10 +97,10 @@ fi
 say "Log:   $LOG"
 echo
 
-if ! run_build > "$LOG" 2>&1; then
+if ! run_build; then
 	if grep -q "network is not able to access" "$LOG"; then
 		say "Flaky sources.buildroot.net check tripped; retrying ..."
-		if ! run_build > "$LOG" 2>&1; then
+		if ! run_build; then
 			tail -25 "$LOG"
 			fail "Build failed (full log: $LOG)"
 		fi
@@ -102,7 +110,12 @@ if ! run_build > "$LOG" 2>&1; then
 	fi
 fi
 
-[ -s "$OUT_IMG" ] || fail "Build reported success but $OUT_IMG is missing"
+# A run that only selected the board would leave no image; guard against the
+# wrapper silently "succeeding" without producing anything.
+[ -s "$OUT_IMG" ] || {
+	tail -25 "$LOG"
+	fail "Build finished but $OUT_IMG was not produced (full log: $LOG)"
+}
 
 say "Copying to firmware.img ..."
 cp -f "$OUT_IMG" "$FIRMWARE_IMG.part" || fail "Could not write $FIRMWARE_IMG"
