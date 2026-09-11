@@ -37,21 +37,45 @@ Only a handful of files differ from the vendor SDK.
 | `kernel-6.1/arch/arm/configs/rk3506-game.config` | Kernel fragment: tinydrm, USB audio, VT/logo, gadget serial |
 | `kernel-6.1/arch/arm/configs/rk3506-display.config` | Display fragment |
 | `buildroot/configs/rockchip_rk3506_game_defconfig` | Buildroot: RetroArch, cores, dosfstools, sfdisk |
-| `buildroot/board/rockchip/rk3506/fs-retrogaming-overlay/` | Rootfs overlay: init scripts, RetroArch config, boot audio |
+| `buildroot/package/retroarch/retroarch/` | RetroArch package, including the console integration under `console/` |
+| `buildroot/board/rockchip/rk3506/fs-retrogaming-overlay/` | Board-only overlay: inittab, data-partition init, USB serial, boot audio |
 | `buildroot/package/retroarch/libretro-*/` | Emulator core packages (build flags, download hashes) |
 
 Audio is deliberately USB-only: the original MAX98357A I2S amplifier support
 (SoC `sai0`, codec node, `asound.conf` softvol) was removed, and
 `CONFIG_SND_USB_AUDIO` enabled instead.
 
+### RetroArch as a package
+
+RetroArch is a normal Buildroot package (`buildroot/package/retroarch/`), not
+an overlay drop-in. Its console integration is part of the package behind
+`BR2_PACKAGE_RETROARCH_CONSOLE`, which the board defconfig enables:
+
+| File in `package/retroarch/retroarch/console/` | Installs to |
+|---|---|
+| `retroarch.cfg` | `/etc/retroarch.cfg` — RGUI, libretro dirs, ROM browser at `/root/roms` |
+| `S99retroarch` | `/etc/init.d/S99retroarch` — starts RetroArch at boot |
+| `retroarch-forever` | `/usr/bin/retroarch-forever` — respawn supervisor |
+
+The supervisor relaunches RetroArch (into its menu) whenever it exits, so
+quitting, restarting, or crashing returns to the front-end rather than a blank
+framebuffer. The package also creates `/root/{saves,states,roms}`.
+
+It installs through `RETROARCH_POST_INSTALL_TARGET_HOOKS`: an autotools
+package's own install target is already claimed, and a post-install hook also
+ensures our `retroarch.cfg` wins over the stock one RetroArch's `make install`
+writes to `/etc`.
+
 ### Rootfs overlay
+
+What remains in `board/rockchip/rk3506/fs-retrogaming-overlay/` is genuinely
+board-specific:
 
 - `etc/init.d/S20data` — first boot: formats the leftover GPT `data` partition
   as FAT32 (label `GAME`), retypes its GPT GUID to "Microsoft basic data" so
   Windows assigns a drive letter, then mounts it at `/root/roms`.
-- `etc/init.d/S99retroarch` — starts the supervisor at boot.
-- `usr/bin/retroarch-forever` — relaunches RetroArch (into the menu) whenever
-  it exits, so the console can't die to a blank screen.
+- `etc/inittab` — a getty on the USB gadget serial (`ttyGS0`).
+- `etc/init.d/S40usbserial`, `S50usbdevice.sh` — USB gadget setup.
 - `root/overmyhead.wav` — 16-bit/44.1kHz stereo test/boot audio.
 
 ### Emulator cores
@@ -66,7 +90,8 @@ Audio is deliberately USB-only: the original MAX98357A I2S amplifier support
 
 All are ARM-friendly and built for the A7. There is no NDS core: the RK3506 has
 no GPU and only two A7 cores, and the buildroot tree ships no melonds/desmume
-package.
+package. The vendor Kodi packages were removed as well — this device is a
+dedicated emulation console, and nothing in the tree depended on them.
 
 ## Partition layout
 
@@ -87,10 +112,29 @@ into it and they appear in RetroArch's browser at `/root/roms`.
 Requires a Linux x86_64 host. Buildroot fetches its own sources into
 `buildroot/dl/` (not tracked here).
 
+### One-click
+
+```sh
+./make-firmware.sh
+```
+
+This wraps `./build.sh` and leaves a flashable **`./firmware.img`** in the
+project root, printing its size and sha256. It handles the parts that trip
+people up: sets the `PATH` the SDK expects, picks the default board
+non-interactively on a fresh clone, retries the flaky `sources.buildroot.net`
+reachability check once, and on failure prints the tail of the real error
+instead of thousands of log lines (full log at `output/build-firmware.log`).
+
+```sh
+./make-firmware.sh <board>_defconfig   # build a different board
+./make-firmware.sh -h                  # help
+```
+
+### Manually
+
 A fresh clone has no board selected, so pass the defconfig once:
 
 ```sh
-cd HZ-RK3506_MiniEVM_RetroArchGamer
 env PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
     ./build.sh HZ-RK3506G2_MiniEVM_TF_defconfig
 ```
@@ -102,9 +146,8 @@ env PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" ./build.
 ```
 
 Output: `output/update/Image/update.img`, to be written with the Rockchip
-SDDiskTool / upgrade tool.
-
-Component targets also work: `./build.sh uboot | kernel | buildroot`.
+SDDiskTool / upgrade tool. Component targets also work:
+`./build.sh uboot | kernel | buildroot`.
 
 ### The cross toolchain
 
