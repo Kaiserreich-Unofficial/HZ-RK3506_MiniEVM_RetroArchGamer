@@ -129,6 +129,28 @@ define RETROARCH_CONFIGURE_CMDS
 	)
 endef
 
+ifeq ($(BR2_PACKAGE_RETROARCH_CONSOLE),y)
+# Make RetroArch the system front-end: default config, boot init script, and a
+# supervisor that respawns it. Installed as part of this package (rather than a
+# board overlay) so the integration travels with the option.
+#
+# Registered as a POST_INSTALL_TARGET hook so it runs after RetroArch's own
+# "make install", which would otherwise overwrite /etc/retroarch.cfg with its
+# stock default.
+define RETROARCH_CONSOLE_INSTALL_TARGET_CMDS
+	$(INSTALL) -D -m 0644 $(RETROARCH_PKGDIR)/console/retroarch.cfg \
+		$(TARGET_DIR)/etc/retroarch.cfg
+	$(INSTALL) -D -m 0755 $(RETROARCH_PKGDIR)/console/retroarch-forever \
+		$(TARGET_DIR)/usr/bin/retroarch-forever
+	$(INSTALL) -D -m 0755 $(RETROARCH_PKGDIR)/console/S99retroarch \
+		$(TARGET_DIR)/etc/init.d/S99retroarch
+	mkdir -p $(TARGET_DIR)/root/saves $(TARGET_DIR)/root/states \
+		$(TARGET_DIR)/root/roms
+endef
+
+RETROARCH_POST_INSTALL_TARGET_HOOKS += RETROARCH_CONSOLE_INSTALL_TARGET_CMDS
+endif
+
 $(eval $(autotools-package))
 
 # DEFINITION OF LIBRETRO PLATFORM

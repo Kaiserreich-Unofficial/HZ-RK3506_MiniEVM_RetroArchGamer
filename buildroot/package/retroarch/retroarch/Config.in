@@ -34,4 +34,16 @@ config BR2_PACKAGE_RETROARCH_ASSETS
         help
           Support assets GUI_icon.
 
+config BR2_PACKAGE_RETROARCH_CONSOLE
+	bool "retroarch console integration"
+	help
+	  Install the files that make RetroArch the system's front-end on a
+	  dedicated console: /etc/retroarch.cfg defaults (RGUI, libretro dirs,
+	  ROM browser at /root/roms), an init script that starts it at boot,
+	  and a supervisor that restarts it whenever it exits so the device
+	  never falls back to a blank framebuffer.
+
+	  Only enable this on a device dedicated to RetroArch. It assumes the
+	  root filesystem is writable for saves and states.
+
 endif

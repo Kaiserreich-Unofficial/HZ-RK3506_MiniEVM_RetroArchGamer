@@ -74,3 +74,9 @@ tools/linux/PinDebug/pin_debug_tool_v1.11_for_linux.tar
 /tools/windows/SecureBootTool_*.zip
 /tools/windows/boot_merger_*.zip
 /tools/windows/programmer_image_tool_*.zip
+
+# ---- One-click build output -------------------------------------------------
+# make-firmware.sh copies output/update/Image/update.img here for flashing;
+# it is a build product, not source.
+/firmware.img
+/firmware.img.part
