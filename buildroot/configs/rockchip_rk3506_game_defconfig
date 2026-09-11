@@ -1,0 +1,38 @@
+#include "base/base.config"
+#include "chips/rk3506_arm.config"
+#include "fs/vfat.config"
+# --- audio (alsa only, no pulseaudio: retroarch talks to alsa directly) ---
+BR2_PACKAGE_ALSA_LIB=y
+BR2_PACKAGE_ALSA_UTILS=y
+BR2_PACKAGE_ALSA_UTILS_AMIXER=y
+BR2_PACKAGE_ALSA_UTILS_APLAY=y
+BR2_PACKAGE_ALSA_UTILS_SPEAKER_TEST=y
+BR2_PACKAGE_ROCKCHIP_ALSA_CONFIG=y
+# --- data partition: mkfs.vfat on first boot (S20data) ---
+BR2_PACKAGE_DOSFSTOOLS=y
+BR2_PACKAGE_DOSFSTOOLS_MKDOSFS=y
+# sfdisk: fix the data partition's RK-proprietary GPT type GUID to
+# "Microsoft basic data", otherwise Windows hides it (no drive letter)
+BR2_PACKAGE_UTIL_LINUX=y
+BR2_PACKAGE_UTIL_LINUX_BINARIES=y
+BR2_PACKAGE_UTIL_LINUX_LIBBLKID=y
+BR2_PACKAGE_UTIL_LINUX_LIBMOUNT=y
+BR2_PACKAGE_UTIL_LINUX_LIBUUID=y
+# --- input debug ---
+BR2_PACKAGE_EVTEST=y
+BR2_PACKAGE_IPROUTE2=y
+# --- retroarch: KMS/DRM software video driver (RK3506 has no GPU) ---
+BR2_PACKAGE_LIBDRM=y
+BR2_PACKAGE_RETROARCH=y
+BR2_PACKAGE_RETROARCH_RGUI=y
+BR2_PACKAGE_RETROARCH_HID=y
+BR2_PACKAGE_RETROARCH_ASSETS=y
+BR2_PACKAGE_LIBRETRO_MGBA=y
+# --- more cores: FC/NES, GB/GBC, SFC(SNES), MD/SMS/GG (all ARM-friendly) ---
+BR2_PACKAGE_LIBRETRO_FCEUMM=y
+BR2_PACKAGE_LIBRETRO_GAMBATTE=y
+BR2_PACKAGE_LIBRETRO_SNES9X2005=y
+BR2_PACKAGE_LIBRETRO_PICODRIVE=y
+BR2_ROOTFS_OVERLAY+="board/rockchip/rk3506/fs-retrogaming-overlay/"
+BR2_PACKAGE_SDL=y
+BR2_PACKAGE_SDL_FBCON=y

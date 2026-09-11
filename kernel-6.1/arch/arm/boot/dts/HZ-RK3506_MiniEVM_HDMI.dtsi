@@ -1,0 +1,63 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Copyright (c) 2025 HZHY Electronics Co., Ltd.
+ */
+
+/* MIPI DSI to HDMI */
+&pwm0_4ch_2 {
+	status = "disabled";
+};
+
+&pwm1_8ch_0 {
+	pinctrl-names = "active";
+	pinctrl-0 = <&rm_io20_pwm1_ch0>;
+	status = "okay";
+};
+
+&backlight {
+	pwms = <&pwm1_8ch_0 0 25000 0>;
+};
+
+&dsi_panel {
+	prepare-delay-ms = <200>;
+	reset-delay-ms = <200>;
+	init-delay-ms = <200>;
+	disable-delay-ms = <200>;
+	unprepare-delay-ms = <200>;
+	
+	/delete-property/ backlight;
+	
+	/delete-property/ width-mm;
+	/delete-property/ height-mm;
+	
+	/delete-property/ pinctrl-names;
+	/delete-property/ pinctrl-0;
+	/delete-property/ reset-gpios;
+	/delete-property/ panel-init-sequence;
+	/delete-property/ panel-exit-sequence;
+	
+	dsi,flags = <(MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST |
+	MIPI_DSI_MODE_NO_EOT_PACKET)>;
+	dsi,format = <MIPI_DSI_FMT_RGB888>;
+	dsi,lanes  = <2>;
+};
+
+&disp_timings0 {
+	native-mode = <&dsi_timing0>;
+	dsi_timing0: timing0 {
+		clock-frequency = <74250000>;
+		hactive = <1280>;
+		vactive = <720>;
+		hfront-porch = <110>;
+		hsync-len = <40>;
+		hback-porch = <220>;
+		vfront-porch = <5>;
+		vsync-len = <5>;
+		vback-porch = <20>;
+		hsync-active = <0>;
+		vsync-active = <1>;
+		de-active = <0>;
+		pixelclk-active = <0>;
+	};
+};
+

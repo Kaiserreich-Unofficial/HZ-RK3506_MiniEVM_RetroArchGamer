@@ -1,0 +1,392 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+* Copyright (c) 2024 Rockchip Electronics Co., Ltd.
+*/
+
+#include "rk3506.dtsi"
+#include "rk3506-evb1-v10.dtsi"
+
+/ {
+	model = "Rockchip RK3506B(BGA) EVB1 V10 Board";
+	compatible = "rockchip,rk3506b-evb1-v10", "rockchip,rk3506";
+	
+	// vcc3v3_lcd_n: vcc3v3-lcd0-n {
+	// 	compatible = "regulator-fixed";
+	// 	enable-active-high;
+	// 	gpio = <&gpio0 RK_PA1 GPIO_ACTIVE_HIGH>;
+	// 	regulator-name = "vcc3v3_lcd_n";
+	// 	regulator-boot-on;
+	// 	regulator-state-mem {
+	// 		regulator-off-in-suspend;
+	// 	};
+	// };
+	
+	vcc5v0_otg0: vcc5v0-otg0-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc5v0_otg0";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		enable-active-high;
+		gpio = <&gpio1 RK_PA2 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&vcc5v0_otg0_en>;
+	};
+	
+	vcc5v0_otg1: vcc5v0-otg1-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc5v0_otg1";
+		regulator-boot-on;
+		regulator-always-on;
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		enable-active-high;
+		gpio = <&gpio1 RK_PA1 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&vcc5v0_otg1_en>;
+	};
+	
+	user_adc_keys: user-adc-keys {
+		compatible = "adc-keys";
+		io-channels = <&saradc 3>;
+		io-channel-names = "buttons";
+		keyup-threshold-microvolt = <1800000>;
+		poll-interval = <100>;
+		
+		/* SW2 */
+		vol-up-key {
+			label = "volume up";
+			linux,code = <KEY_VOLUMEUP>;
+			press-threshold-microvolt = <410000>;
+		};
+		
+		/* SW3 */
+		vol-down-key {
+			label = "volume down";
+			linux,code = <KEY_VOLUMEDOWN>;
+			press-threshold-microvolt = <870000>;
+		};
+	};
+	
+	leds: leds {
+		compatible = "gpio-leds";
+		status = "okay";
+		
+		run_led: run-led {
+			label = "run";
+			gpios = <&gpio1 RK_PA4 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "heartbeat";
+			default-state = "on";
+		};
+
+		EXP_D1: EXP_D1 {
+			label = "EXP_D1";
+			gpios = <&gpio1 RK_PC6 GPIO_ACTIVE_LOW>;
+			//linux,default-trigger = "heartbeat";
+			default-state = "on";
+		};
+	};
+	
+	/delete-node/ wireless-bluetooth;
+	/delete-node/ wireless-wlan;
+	
+};
+
+&cma {
+	size = <0x1600000>;
+};
+
+&dsi {
+	status = "okay";
+};
+
+&dsi_dphy {
+	status = "okay";
+};
+
+&dsi_in_vop {
+	status = "okay";
+};
+
+// &dsi_panel {
+// 	power-supply = <&vcc3v3_lcd_n>;
+// };
+
+&es8388_sound {
+	status = "okay";
+	/delete-property/ spk-con-gpio;
+	hp-det-gpio = <&gpio1 RK_PA6 GPIO_ACTIVE_HIGH>;
+	hp-con-gpio = <&gpio1 RK_PA7 GPIO_ACTIVE_HIGH>;
+	
+	keyup-threshold-microvolt = <1800000>;
+	poll-interval = <100>;
+	
+	rockchip,audio-routing =
+	"Headphone", "LOUT1",
+	"Headphone", "ROUT1",
+	"Headphone", "Headphone Power",
+	"Headphone", "Headphone Power",
+	"LINPUT1", "Main Mic",
+	"LINPUT2", "Main Mic",
+	"RINPUT1", "Headset Mic",
+	"RINPUT2", "Headset Mic";
+	
+	pinctrl-names = "default";
+	pinctrl-0 = <&hp_det>;
+	
+	play-pause-key {
+		label = "playpause";
+		linux,code = <KEY_PLAYPAUSE>;
+		press-threshold-microvolt = <2000>;
+	};
+};
+
+// &gt1x {
+// 	power-supply = <&vcc3v3_lcd_n>;
+// 	status = "disabled";
+// };
+
+
+&route_dsi {
+	status = "okay";
+};
+
+&sai1 {
+	status = "okay";
+};
+
+&u2phy_otg0 {
+	vbus-supply = <&vcc5v0_otg0>;
+	status = "okay";
+};
+
+&u2phy_otg1 {
+	phy-supply = <&vcc5v0_otg1>;
+	status = "okay";
+};
+
+&gmac0 {
+	phy-mode = "rmii";
+	clock_in_out = "input";
+	
+	/*
+	* PHY: YT8512H
+	*/
+	snps,reset-gpio = <&gpio1 RK_PB7 GPIO_ACTIVE_LOW>;
+	snps,reset-active-low;
+	snps,reset-delays-us = <20000 20000 20000>;
+	
+	pinctrl-names = "default";
+	pinctrl-0 = <&eth_rmii0_miim_pins
+	&eth_rmii0_tx_bus2_pins
+	&eth_rmii0_rx_bus2_pins
+	&eth_rmii0_clk_pins>;
+	
+	phy-handle = <&rmii_phy0>;
+	status = "okay";
+};
+
+&mdio0 {
+	/delete-node/ phy@1;
+	rmii_phy0: phy@0 {
+		compatible = "ethernet-phy-ieee802.3-c22";
+		reg = <0x0>;
+	};
+};
+
+&gmac1 {
+	phy-mode = "rmii";
+	clock_in_out = "input";
+	
+	/*
+	* PHY: YT8522H
+	*/
+	snps,reset-gpio = <&gpio1 RK_PB5 GPIO_ACTIVE_HIGH>;
+	snps,reset-active-high;
+	snps,reset-delays-us = <20000 20000 20000>;
+	
+	pinctrl-names = "default";
+	pinctrl-0 = <&eth_rmii1_miim_pins
+	&eth_rmii1_tx_bus2_pins
+	&eth_rmii1_rx_bus2_pins
+	&eth_rmii1_clk_pins>;
+	
+	phy-handle = <&rmii_phy1>;
+	status = "okay";
+};
+
+&mdio1 {
+	rmii_phy1: phy@0 {
+		compatible = "ethernet-phy-ieee802.3-c22";
+		reg = <0x0>;
+	};
+};
+
+
+// &i2c2 {
+// 	status = "okay";
+// 	pinctrl-names = "default";
+// 	pinctrl-0 = <&rm_io4_i2c2_scl
+// 	&rm_io5_i2c2_sda>;
+	
+// 	es8388_1: es8388_1@11 {
+// 		status = "okay";
+// 		#sound-dai-cells = <0>;
+// 		compatible = "everest,es8388", "everest,es8323";
+// 		reg = <0x11>;
+// 		clocks = <&mclkout_sai1>;
+// 		clock-names = "mclk";
+// 		assigned-clocks = <&mclkout_sai1>;
+// 		assigned-clock-rates = <12288000>;
+// 		pinctrl-names = "default";
+// 		pinctrl-0 = <&rm_io8_sai1_mclk>;
+// 		// 启用 ADC 支持
+// 		record-src = "linein", "mic";// 设置录音输入源
+// 		playback-src = "dac";// 设置播放源
+		
+// 	};
+	
+// 	/* for u-boot */
+// 	lt8912b: lt8912b@48 {
+// 		compatible = "lontium,lt8912b-hdmi";
+// 		reg = <0x48>;
+// 		reset-gpios = <&gpio1 RK_PA5 GPIO_ACTIVE_LOW>;
+// 		status = "okay";
+// 	};
+// };
+
+//es8388
+&i2c0 {
+	// status = "okay";
+	// pinctrl-names = "default";
+	// pinctrl-0 = <&rm_io25_i2c0_scl
+	// &rm_io26_i2c0_sda>;
+	es8388: es8388@11 {
+		status = "okay";
+		#sound-dai-cells = <0>;
+		compatible = "everest,es8388", "everest,es8323";
+		reg = <0x11>;
+		clocks = <&mclkout_sai1>;
+		clock-names = "mclk";
+		assigned-clocks = <&mclkout_sai1>;
+		assigned-clock-rates = <12288000>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&rm_io8_sai1_mclk>;
+		// 启用 ADC 支持
+		record-src = "linein", "mic";// 设置录音输入源
+		playback-src = "dac";// 设置播放源		
+	};
+};
+
+//EXPORT0
+&spi0 {
+	status = "disable";
+	num-cs = <2>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&rm_io14_spi0_clk
+	&rm_io13_spi0_csn0
+	&rm_io15_spi0_csn1
+	&rm_io17_spi0_mosi
+	&rm_io16_spi0_miso>;
+	
+	flash@0 {
+		compatible = "winbond,w25q20cl", "jedec,spi-nor";
+		reg = <0>;
+		spi-max-frequency = <50000000>;
+	};
+	
+	flash@1 {
+		compatible = "winbond,w25q20cl", "jedec,spi-nor";
+		reg = <1>;
+		spi-max-frequency = <50000000>;
+	};
+};
+
+
+//rtc
+&i2c1 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&rm_io28_i2c1_scl
+	&rm_io27_i2c1_sda>;
+	pcf8563: pcf8563@51 {
+		compatible = "nxp,pcf8563";
+		reg = <0x51>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&at8563_int>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <RK_PB6 IRQ_TYPE_LEVEL_LOW>;
+		// #clock-cells = <0>;
+		// status = "okay";
+	};
+};
+
+//RS485_0
+&uart1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&rm_io3_uart1_tx
+	&rm_io2_uart1_rx>;
+	dma-names = "tx", "rx";
+	status = "okay";
+};
+
+//RS485_1
+&uart2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&rm_io24_uart2_tx
+	&rm_io16_uart2_rx>;	
+	dma-names = "tx", "rx";
+	status = "okay";	
+};
+
+//beidou
+&uart3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&rm_io1_uart3_tx
+	&rm_io4_uart3_rx>;	
+	dma-names = "tx", "rx";
+	status = "okay";	
+};
+
+
+&pwm0_4ch_3 {
+	status = "okay";
+	pinctrl-names = "active";
+	pinctrl-0 = <&rm_io6_pwm0_ch3>;
+};
+
+//EXPORT1
+&fspi {
+	status = "okay";
+};
+
+
+
+&pinctrl {
+	
+	at8563 {
+		at8563_int: at8563-int {
+			rockchip,pins = <1 RK_PB6 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+	};
+	
+	led_pins: led-pins {
+		rockchip,pins = <1 RK_PA4 RK_FUNC_GPIO &pcfg_pull_none>;
+	};
+	
+	headphone {
+		hp_det: hp-det {
+			rockchip,pins = <1 RK_PA6 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+	};
+	
+	usb {
+		vcc5v0_otg0_en: vcc5v0-otg0-en {
+			rockchip,pins = <1 RK_PA2 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+		
+		vcc5v0_otg1_en: vcc5v0-otg1-en {
+			rockchip,pins = <1 RK_PA1 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+	};
+	
+};

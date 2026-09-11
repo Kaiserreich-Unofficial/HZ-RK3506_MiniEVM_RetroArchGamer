@@ -1,0 +1,32 @@
+Remove _FILE_OFFSET_BITS undef in bundled zlib gzguts.h
+
+Bundled zlib gzguts.h undefines _FILE_OFFSET_BITS when
+_LARGEFILE64_SOURCE is defined. With toolchains that define
+_TIME_BITS=64 (32-bit glibc), glibc features-time64.h then errors:
+"_TIME_BITS=64 is allowed only with _FILE_OFFSET_BITS=64".
+
+Upstream zlib removed this undef in commit 68fafcd2 (2017); apply
+the same to the vendored copy.
+
+Signed-off-by: ZCode <zcode@local>
+---
+ deps/libz/gzguts.h | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/deps/libz/gzguts.h b/deps/libz/gzguts.h
+index 987fb03..2ab7927 100644
+--- a/deps/libz/gzguts.h
++++ b/deps/libz/gzguts.h
+@@ -11,9 +11,6 @@
+ #ifdef _LARGEFILE64_SOURCE
+ #  ifndef _LARGEFILE_SOURCE
+ #    define _LARGEFILE_SOURCE 1
+ #  endif
+-#  ifdef _FILE_OFFSET_BITS
+-#    undef _FILE_OFFSET_BITS
+-#  endif
+ #endif
+
+ #ifdef HAVE_HIDDEN
+--
+2.34.1

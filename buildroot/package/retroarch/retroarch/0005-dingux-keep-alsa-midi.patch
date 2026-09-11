@@ -1,0 +1,11 @@
+--- a/Makefile.common
++++ b/Makefile.common
+@@ -850,7 +850,7 @@
+ 
+    ifneq ($(HAVE_HAKCHI), 1)
+       ifneq ($(HAVE_SEGAM), 1)
+-         ifneq ($(DINGUX), 1)
++         ifneq ($(DINGUX_ALWAYS), 1)
+             OBJ += midi/drivers/alsa_midi.o
+          endif
+       endif

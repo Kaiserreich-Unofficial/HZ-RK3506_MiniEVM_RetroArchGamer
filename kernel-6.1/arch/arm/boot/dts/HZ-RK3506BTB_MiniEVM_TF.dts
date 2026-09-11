@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+* Copyright (c) 2025 HZHY Electronics Co., Ltd.
+*/
+
+/dts-v1/;
+
+#include "HZ-RK3506BTB_MiniEVM_NAND.dts"
+
+/ {
+	model = "HZ-RK3506BTB_MiniEVM SD";
+	compatible = "rockchip,rk3506-evb1-v10", "rockchip,rk3506";
+	version = "v1.0.3_20251024";
+	chosen {
+		// bootargs = "earlycon=uart8250,mmio32,0xff0a0000 console=ttyFIQ0 ubi.mtd=5 root=ubi0:rootfs rw rootfstype=ubifs rootwait snd_aloop.index=7 snd_aloop.use_raw_jiffies=1";
+		bootargs = "earlycon=uart8250,mmio32,0xff0a0000 console=ttyFIQ0 rootfstype=ext4 root=PARTUUID=614e0000-0000 rw rootwait net.ifnames=0";
+	};
+	/delete-node/ sdio-pwrseq;
+	
+};

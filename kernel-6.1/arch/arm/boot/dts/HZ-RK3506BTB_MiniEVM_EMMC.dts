@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Copyright (c) 2025 HZHY Electronics Co., Ltd.
+ */
+
+/dts-v1/;
+
+#include "HZ-RK3506_MiniEVM.dtsi"
+// #include "HZ-RK3506_MiniEVM_HDMI.dtsi"
+#include "HZ-RK3506_MiniEVM_MIPI.dtsi"
+
+/ {
+    model = "HZ-RK3506BTB_MiniEVM EMMC";
+	compatible = "rockchip,rk3506-evb1-v10", "rockchip,rk3506";
+	version = "v1.0.3_20251024";
+    chosen {
+        bootargs = "earlycon=uart8250,mmio32,0xff0a0000 console=ttyFIQ0 rootfstype=ext4 root=PARTUUID=614e0000-0000 rw rootwait net.ifnames=0";
+    };
+
+    /delete-node/ sdio-pwrseq;
+};
+
+/* enable mmc is emmc */
+&mmc {
+	/delete-property/ no-mmc;
+	/delete-property/ disable-wp;
+	/delete-property/ cd-gpios;
+	/delete-property/ cd-debounce-delay-ms;
+	/delete-property/ sd-uhs-sdr104;
+	/delete-property/ mmc-pwrseq;
+	
+	no-sdio;
+	no-sd;
+	cap-mmc-highspeed;
+	cap-sd-highspeed;
+	non-removable;
+	mmc-hs200-1_8v;
+	pinctrl-names = "default";
+	pinctrl-0 = <&sdmmc_clk_pins &sdmmc_cmd_pins &sdmmc_bus4_pins>;
+	
+	status = "okay";
+};

@@ -1,0 +1,20 @@
+#!/bin/sh
+# Launch RetroArch at boot under a respawn supervisor: on Quit/Restart/crash
+# it is relaunched automatically, so it always ends up back in the front-end.
+
+case "$1" in
+  start)
+    [ -x /usr/bin/retroarch ] || exit 0
+    mkdir -p /root/saves /root/states /root/roms
+    retroarch-forever &
+    ;;
+  stop)
+    # kill supervisor first, else it respawns retroarch
+    killall retroarch-forever 2>/dev/null
+    killall retroarch 2>/dev/null
+    ;;
+  *)
+    echo "Usage: $0 {start|stop}"
+    exit 1
+    ;;
+esac

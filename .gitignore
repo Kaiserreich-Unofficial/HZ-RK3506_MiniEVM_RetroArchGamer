@@ -1,0 +1,76 @@
+# Root-level .gitignore for the RK3506 MiniEVM firmware snapshot.
+#
+# The vendor SDK already ships accurate per-tree .gitignore files
+# (kernel-6.1/.gitignore, u-boot/.gitignore, buildroot/.gitignore,
+# tools/.gitignore, hal/.gitignore, docs/.gitignore, rtos/.gitignore).
+# They correctly cover build artifacts (*.o, vmlinux, *.dtb, generated/ ...),
+# so this file only handles the TOP-LEVEL bulk that the vendor does not:
+# build output, download caches, and vendor binary deliverables.
+#
+# Keep this list short. A broad pattern here silently swallows real source --
+# e.g. a bare "rockdev" also matches
+# tools/linux/Linux_Pack_Firmware/rockdev/, which mk-updateimg.sh needs.
+
+# ---- Build output and caches (all reproducible) ----------------------------
+/output/
+/buildroot/output/
+/buildroot/dl/
+/rockdev
+
+# ---- Vendor binary deliverables (unmodified, not source) -------------------
+# Prebuilt Ubuntu rootfs image and the RTOS/AMP SDK are not used by the
+# retro-gaming firmware (which builds its rootfs with buildroot, and never
+# sets RK_AMP). Archive separately if they need preserving.
+/Ubuntu/
+/rtos/
+
+# ---- Cross toolchain: fetched, not stored ---------------------------------
+# The prebuilt ARM toolchain (516MB of binaries under prebuilts/gcc) is not
+# tracked: it is ARM's official GNU Toolchain A-profile 10.3-2021.07 release,
+# republished byte-for-byte, and git-compressing it still costs ~131MB of the
+# repository. device/rockchip/common/scripts/fetch-toolchain.sh downloads the
+# 99MB upstream tarball, checks its sha256, and unpacks it. build.sh calls
+# that script automatically when the toolchain is absent.
+#
+# To restore it manually: device/rockchip/common/scripts/fetch-toolchain.sh
+# (the 99MB tarball it caches under buildroot/dl/toolchain/ stays untracked,
+# like the rest of that download cache)
+/prebuilts/gcc/
+
+# ---- Redundant / oversized ------------------------------------------------
+# Archive of the tree already present, plus a 170MB vendor debug tool that the
+# build never references (over GitHub's 100MB per-file limit).
+kernel-6.1.tar.gz
+tools/linux/PinDebug/pin_debug_tool_v1.11_for_linux.tar
+
+# ---- Stray build outputs nested inside the kernel tree --------------------
+# Leftovers from an out-of-tree build that ran with a different output dir;
+# not part of the kernel source.
+/kernel-6.1/buildroot/
+/kernel-6.1/Ubuntu/
+/kernel-6.1/kernel_test/
+
+
+# ---- Vendor tool archives not needed for this board -----------------------
+# DDR/pin-debug/sign/production-programming tools (335MB of already-compressed
+# archives). They target board bring-up and factory flashing, not the
+# retro-gaming firmware. The flashing tools this project does use
+# (SDDiskTool, RKDevTool, DriverAssitant, FactoryTool, upgrade_tool,
+# RKImageMaker) are kept in tools/.
+/tools/linux/rk_ddrbin_tool_*.7z
+/tools/windows/rk_ddrBin_tool_*.7z
+/tools/windows/DDR_UserTool_*.zip
+/tools/windows/pin_debug_tool_*.zip
+/tools/linux/PinDebug/*.tar
+/tools/windows/rk_sign_tool_*.zip
+/tools/linux/rk_sign_tool_*.zip
+/tools/windows/Rockchip_USB_SQ_Tool_*.7z
+/tools/windows/ParameterTool_*.zip
+/tools/windows/BoardProofTool_*.zip
+/tools/windows/RKDevInfoWriteTool_*.zip
+/tools/windows/Rockchip_HdcpKey_Writer_*.7z
+/tools/windows/RKPCBATool_*.zip
+/tools/windows/EfuseTool_*.zip
+/tools/windows/SecureBootTool_*.zip
+/tools/windows/boot_merger_*.zip
+/tools/windows/programmer_image_tool_*.zip

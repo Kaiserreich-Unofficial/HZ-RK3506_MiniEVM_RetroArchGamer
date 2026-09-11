@@ -1,0 +1,12 @@
+#!/bin/sh
+# Restart RetroArch whenever it exits (menu Quit / Restart), so the console
+# always falls back to the RetroArch front-end instead of a dead framebuffer.
+
+CORE=/usr/lib/libretro/mgba_libretro.so
+export SDL_NOMOUSE=1
+
+while :; do
+	retroarch
+	# RetroArch exited (Quit/Restart/crash); respawn into the menu after a beat
+	sleep 1
+done

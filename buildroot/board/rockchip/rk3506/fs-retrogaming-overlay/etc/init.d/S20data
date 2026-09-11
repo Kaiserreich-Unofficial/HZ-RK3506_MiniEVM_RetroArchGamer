@@ -1,0 +1,34 @@
+#!/bin/sh
+# First boot: format the leftover GPT "data" partition as FAT32 (label GAME)
+# and mount it at /root/roms, so ROMs copied from a PC show up in RetroArch.
+
+DATAPART=""
+for U in /sys/block/mmcblk*/mmcblk*p*/uevent; do
+	if grep -q '^PARTNAME=data$' "$U" 2>/dev/null; then
+		DATAPART="/dev/$(basename "$(dirname "$U")")"
+		break
+	fi
+done
+
+[ -n "$DATAPART" ] || { echo "no data partition found"; exit 0; }
+
+if ! blkid "$DATAPART" | grep -q 'TYPE="vfat"'; then
+	echo "Formatting $DATAPART as FAT32 (label GAME)..."
+	mkfs.vfat -F 32 -n GAME "$DATAPART"
+fi
+
+# RK's loader gives the partition a proprietary GPT type GUID
+# (73170000-...); Windows won't assign a drive letter to it. Retype it as
+# "Microsoft basic data" so Windows shows it as a normal removable drive.
+# Idempotent; PARTNAME=data in the GPT entry is untouched.
+DISK="${DATAPART%p*}"
+PARTNUM="${DATAPART##*p}"
+if sfdisk --part-type "$DISK" "$PARTNUM" 2>/dev/null | grep -qi '7317'; then
+	echo "Retyping $DATAPART GPT type -> Microsoft basic data"
+	sfdisk --part-type "$DISK" "$PARTNUM" ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+fi
+
+mkdir -p /root/roms
+if mount -t vfat "$DATAPART" /root/roms; then
+	echo "data mounted at /root/roms"
+fi

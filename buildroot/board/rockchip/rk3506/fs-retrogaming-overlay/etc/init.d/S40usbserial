@@ -1,0 +1,31 @@
+#!/bin/sh
+# USB gadget: expose /dev/ttyGS0 as CDC-ACM virtual serial port on the OTG port
+
+case "$1" in
+start)
+	[ -d /sys/kernel/config/usb_gadget ] || { modprobe libcomposite 2>/dev/null; }
+	G=/sys/kernel/config/usb_gadget/g1
+	[ -d $G ] && exit 0
+	mkdir -p $G || exit 1
+	echo 0x2207 > $G/idVendor
+	echo 0x0019 > $G/idProduct
+	mkdir -p $G/strings/0x409
+	echo "rk3506-game" > $G/strings/0x409/serialnumber
+	echo "HZHY" > $G/strings/0x409/manufacturer
+	echo "RK3506 Virtual Serial" > $G/strings/0x409/product
+	mkdir -p $G/configs/c.1/strings/0x409
+	echo "ACM" > $G/configs/c.1/strings/0x409/configuration
+	mkdir -p $G/functions/acm.0
+	ln -s $G/functions/acm.0 $G/configs/c.1
+	UDC=$(ls /sys/class/udc | head -n1)
+	echo "$UDC" > $G/UDC
+	;;
+stop)
+	G=/sys/kernel/config/usb_gadget/g1
+	[ -d $G ] && echo "" > $G/UDC && rm -rf $G
+	;;
+*)
+	echo "Usage: $0 {start|stop}"
+	exit 1
+	;;
+esac
