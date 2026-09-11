@@ -170,10 +170,20 @@ device/rockchip/common/scripts/fetch-toolchain.sh
 - **`env PATH=...`** — the SDK scripts misbehave with a non-standard `PATH`.
 - **Defconfig selection** — running `./build.sh` with no argument on a fresh
   clone prints a numbered list and waits for input; pick
-  `5. HZ-RK3506G2_MiniEVM_TF_defconfig`, or pass it as above.
+  `5. HZ-RK3506G2_MiniEVM_TF_defconfig`, or pass it as above. Note that
+  passing a defconfig only *selects* the board: it writes `output/.config`
+  and exits. `make-firmware.sh` handles running the real build afterwards.
+- **Parallelism is capped** — both buildroot defconfigs set `BR2_JLEVEL=8`
+  (the default, `0`, means `1 + nproc`). On a host with many cores but little
+  RAM, the default exhausts memory and corrupts build output: `host-libopenssl`
+  dies with `Bus error (core dumped)` and `libcrypto.a: error adding symbols:
+  file format not recognized`. This only bites on a from-scratch build, since
+  an existing `output/` keeps the affected stamps. Raise the value on a
+  machine with plenty of memory.
 - **`sources.buildroot.net` reachability check** — the build probes it and
   aborts if unreachable. Behind a proxy this is flaky: a `403` plus a failed
-  ping trips it even when downloads would succeed. Re-running clears it.
+  ping trips it even when downloads would succeed. `make-firmware.sh` retries
+  once automatically; a manual build just needs re-running.
 - **GCC 12 and `-fcommon`** — the emulator cores are built with `-fcommon`
   because GCC 12 defaults to `-fno-common`, which breaks these older cores at
   link time with "multiple definition" errors.
