@@ -6,6 +6,18 @@ switch_defconfig()
 
 	[ -f "$DEFCONFIG" ] || DEFCONFIG="$RK_CHIP_DIR/$DEFCONFIG"
 
+	# A fresh checkout has no .chip symlink yet: choose_chip creates it, and
+	# the *_defconfig fast path skips choose_chip. Fall back to the real chip
+	# directories so the first command after a clone works.
+	if [ ! -f "$DEFCONFIG" ]; then
+		for c in "$RK_CHIPS_DIR"/*/"$1"; do
+			if [ -f "$c" ]; then
+				DEFCONFIG="$c"
+				break
+			fi
+		done
+	fi
+
 	if [ ! -f "$DEFCONFIG" ]; then
 		error "No such defconfig: $1"
 		exit 1
