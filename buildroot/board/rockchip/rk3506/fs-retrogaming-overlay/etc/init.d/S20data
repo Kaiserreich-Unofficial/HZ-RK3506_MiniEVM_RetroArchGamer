@@ -1,6 +1,11 @@
 #!/bin/sh
 # First boot: format the leftover GPT "data" partition as FAT32 (label GAME)
-# and mount it at /root/roms, so ROMs copied from a PC show up in RetroArch.
+# and mount it at /root/roms, so ROMs copied from a PC show up in Retro-Zero.
+
+# Retro-Zero's browser looks in one directory per system, so create them on the
+# card in a stable order. Dropping a file into the matching folder on the GAME
+# drive is all it takes to make it appear in the UI.
+ROM_SYSTEMS="nes snes gb gbc gba md sms gg"
 
 DATAPART=""
 for U in /sys/block/mmcblk*/mmcblk*p*/uevent; do
@@ -31,4 +36,8 @@ fi
 mkdir -p /root/roms
 if mount -t vfat "$DATAPART" /root/roms; then
 	echo "data mounted at /root/roms"
+	for s in $ROM_SYSTEMS; do
+		mkdir -p "/root/roms/$s"
+	done
 fi
+

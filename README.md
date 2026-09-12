@@ -1,9 +1,10 @@
 # HZ-RK3506 MiniEVM RetroArch Gamer
 
-基于合众跃恒 HZ-RK3506 开发板的复古游戏机，采用 RetroArch 固件。
+基于合众跃恒 HZ-RK3506 开发板的复古游戏机，采用 Retro-Zero（Libretro 前端）固件。
 
 A retro gaming console built on the **HZ-RK3506G2 MiniEVM** board (Rockchip
-RK3506G2, dual Cortex-A7, no GPU), running RetroArch on Buildroot.
+RK3506G2, dual Cortex-A7, no GPU), running Buildroot with
+[Retro-Zero](https://github.com/geo-tp/Retro-Zero) as the Libretro front-end.
 
 This repository is a single-tree snapshot of the vendor Rockchip Linux 6.1 SDK
 with the board customizations that turn it into a handheld. It is **not** an
@@ -19,11 +20,12 @@ upstream Rockchip repository and **not** a `repo`-tool checkout — see
 | Audio | USB sound card (USB Audio Class) |
 | Input | USB OTG: CDC-ACM serial console + USB HID joysticks |
 | Storage | TF card, GPT: `oem` / `userdata` / `rootfs` / `data` |
-| Firmware | RetroArch 1.19.1, RGUI front-end, `sdl_dingux` video driver |
+| Firmware | Retro-Zero front-end (LVGL UI over `/dev/fb0`) + libretro cores |
 
 The debug console runs over a USB gadget at `/dev/ttyGS0`; the host sees it as
-a serial (COM) port. RetroArch starts into its menu, and is supervised so that
-quitting or crashing returns to the menu rather than a blank framebuffer.
+a serial (COM) port. Retro-Zero starts into its ROM browser, and is supervised
+so that quitting or crashing returns to the browser rather than a blank
+framebuffer.
 
 ## What was customized
 
@@ -36,8 +38,8 @@ Only a handful of files differ from the vendor SDK.
 | `kernel-6.1/arch/arm/boot/dts/HZ-RK3506G2_MiniEVM_TF.dts` | Board DTS: SPI panel, backlight, no SoC sound card |
 | `kernel-6.1/arch/arm/configs/rk3506-game.config` | Kernel fragment: tinydrm, USB audio, VT/logo, gadget serial |
 | `kernel-6.1/arch/arm/configs/rk3506-display.config` | Display fragment |
-| `buildroot/configs/rockchip_rk3506_game_defconfig` | Buildroot: RetroArch, cores, dosfstools, sfdisk |
-| `buildroot/package/retroarch/retroarch/` | RetroArch package, including the console integration under `console/` |
+| `buildroot/configs/rockchip_rk3506_game_defconfig` | Buildroot: Retro-Zero, cores, dosfstools, sfdisk |
+| `buildroot/package/retro-zero/` | The Retro-Zero frontend package, including console integration under `console/` |
 | `buildroot/board/rockchip/rk3506/fs-retrogaming-overlay/` | Board-only overlay: inittab, data-partition init, USB serial, boot audio |
 | `buildroot/package/retroarch/libretro-*/` | Emulator core packages (build flags, download hashes) |
 
@@ -45,26 +47,53 @@ Audio is deliberately USB-only: the original MAX98357A I2S amplifier support
 (SoC `sai0`, codec node, `asound.conf` softvol) was removed, and
 `CONFIG_SND_USB_AUDIO` enabled instead.
 
-### RetroArch as a package
+### The frontend: Retro-Zero instead of RetroArch
 
-RetroArch is a normal Buildroot package (`buildroot/package/retroarch/`), not
-an overlay drop-in. Its console integration is part of the package behind
-`BR2_PACKAGE_RETROARCH_CONSOLE`, which the board defconfig enables:
+[Retro-Zero](https://github.com/geo-tp/Retro-Zero) is a Libretro frontend with
+an LVGL interface, and it replaced RetroArch here. The decisive difference on
+this GPU-less board is how each one draws:
 
-| File in `package/retroarch/retroarch/console/` | Installs to |
+- RetroArch's only software-rendering path was its SDL1 `sdl_dingux` driver,
+  which needed SDL plus the `SDL_NOMOUSE` workaround.
+- Retro-Zero's LVGL UI uses `lv_linux_fbdev` and its game frames go through
+  `src/Video/fbdev_video.cpp` — straight `/dev/fb0`, nothing in between. Its
+  EGL/GLES2 path is optional and is disabled (`CP0_WITH_EGL_FBDEV=0`); the
+  binary links only `libasound`, `libstdc++`, `libm`, `libgcc_s` and `libc`.
+  SDL is no longer built at all.
+
+It is a normal Buildroot package (`buildroot/package/retro-zero/`), with the
+console integration behind `BR2_PACKAGE_RETRO_ZERO_CONSOLE`:
+
+| File in `package/retro-zero/console/` | Installs to |
 |---|---|
-| `retroarch.cfg` | `/etc/retroarch.cfg` — RGUI, libretro dirs, ROM browser at `/root/roms` |
-| `S99retroarch` | `/etc/init.d/S99retroarch` — starts RetroArch at boot |
-| `retroarch-forever` | `/usr/bin/retroarch-forever` — respawn supervisor |
+| `S99retrozero` | `/etc/init.d/S99retrozero` — starts Retro-Zero at boot |
+| `retro-zero-forever` | `/usr/bin/retro-zero-forever` — respawn supervisor |
 
-The supervisor relaunches RetroArch (into its menu) whenever it exits, so
-quitting, restarting, or crashing returns to the front-end rather than a blank
-framebuffer. The package also creates `/root/{saves,states,roms}`.
+The supervisor relaunches Retro-Zero (into its ROM browser) whenever it exits,
+so quitting, restarting, or crashing returns to the front-end rather than a
+blank framebuffer. It creates `/root/roms` and `/root/saves`.
 
-It installs through `RETROARCH_POST_INSTALL_TARGET_HOOKS`: an autotools
-package's own install target is already claimed, and a post-install hook also
-ensures our `retroarch.cfg` wins over the stock one RetroArch's `make install`
-writes to `/etc`.
+### Two upstream adaptations
+
+`package/retro-zero/0001-adapt-to-rk3506.patch` (documented in
+`package/retro-zero/README.md`) handles the parts of upstream that assume its
+original ARM64 target:
+
+- **Cores** — upstream downloads prebuilt **ARM64** libretro cores from GitHub
+  on demand; those cannot load on this armv7 board. The patch trims the core
+  registry to the systems we ship ARM32 cores for, points them at
+  `/usr/lib/libretro`, and blanks the download URLs so nothing is fetched at
+  runtime.
+- **Paths** — upstream hardcodes `/home/pi/…`. The patch maps ROMs to
+  `/root/roms/<system>` and saves to `/root/saves/`.
+
+### Libretro cores are frontend-independent
+
+The vendor gates every core's `Config.in` on `BR2_PACKAGE_RETROARCH`, which
+would make it impossible to build a core without RetroArch. Those dependencies
+are removed and the cores menu is no longer gated, because the cores are
+frontend-agnostic: Retro-Zero loads the same `.so` files RetroArch did. The
+core packages themselves are unchanged.
 
 ### Rootfs overlay
 
@@ -104,8 +133,11 @@ rootfs    0x00200000 @ 0x000E8000   (1G, fixed)
 data      grow       @ 0x002E8000   (FAT32 label "GAME", mounted /root/roms)
 ```
 
-The `data` partition is what you see as a removable drive on a PC: drop ROMs
-into it and they appear in RetroArch's browser at `/root/roms`.
+The `data` partition is what you see as a removable drive on a PC. Retro-Zero's
+browser looks in one folder per system (`/root/roms/nes`, `/root/roms/snes`,
+`/root/roms/gb`, `/root/roms/gbc`, `/root/roms/gba`, `/root/roms/md`,
+`/root/roms/sms`, `/root/roms/gg`); the first boot creates them, so dropping a
+file into the matching folder is all it takes.
 
 ## Building
 

@@ -1,8 +1,10 @@
 # Libretro cores and retroarch
 source "package/retroarch/retroarch/Config.in"
 
-if BR2_PACKAGE_RETROARCH
-menu "Retroarch Cores"
+# The libretro cores are frontend-agnostic: any libretro frontend can load
+# them, so they are selectable independently of RetroArch. (retro-zero uses
+# them without RetroArch being built at all.)
+menu "Libretro Cores"
 	source "package/retroarch/libretro-4do/Config.in"
 	source "package/retroarch/libretro-81/Config.in"
 	source "package/retroarch/libretro-armsnes/Config.in"
@@ -68,4 +70,3 @@ menu "Retroarch Cores"
 	source "package/retroarch/libretro-vecx/Config.in"
 	source "package/retroarch/libretro-virtualjaguar/Config.in"
 endmenu
-endif

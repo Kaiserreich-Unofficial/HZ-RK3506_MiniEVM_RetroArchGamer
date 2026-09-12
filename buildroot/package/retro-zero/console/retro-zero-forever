@@ -1,0 +1,13 @@
+#!/bin/sh
+# Restart Retro-Zero whenever it exits, so the console always falls back to the
+# front-end instead of leaving a dead framebuffer.
+#
+# Run with no arguments: with argc == 1 Retro-Zero enters its UI mode and shows
+# the ROM browser. (It also accepts "<core.so> <rom>" to launch a game
+# directly, which the UI uses internally when it starts a session.)
+
+while :; do
+	retro-zero
+	# Exited (or crashed); respawn into the browser after a beat.
+	sleep 1
+done

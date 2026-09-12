@@ -1,6 +1,5 @@
 config BR2_PACKAGE_LIBRETRO_BEETLELYNX
         bool "libretro-beetle-lynx"
-	depends on BR2_PACKAGE_RETROARCH
 	depends on BR2_INSTALL_LIBSTDCPP
         help
           libretro beetle-lynx core.

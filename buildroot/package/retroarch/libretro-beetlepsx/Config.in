@@ -1,6 +1,5 @@
 config BR2_PACKAGE_LIBRETRO_BEETLEPSX
         bool "libretro-beetle-psx"
-	depends on BR2_PACKAGE_RETROARCH
 	depends on BR2_INSTALL_LIBSTDCPP
         help
           libretro beetle-psx core.

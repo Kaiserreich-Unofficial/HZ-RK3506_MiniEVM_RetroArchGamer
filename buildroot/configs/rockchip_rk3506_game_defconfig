@@ -30,18 +30,19 @@ BR2_PACKAGE_EVTEST=y
 BR2_PACKAGE_IPROUTE2=y
 # --- retroarch: KMS/DRM software video driver (RK3506 has no GPU) ---
 BR2_PACKAGE_LIBDRM=y
-BR2_PACKAGE_RETROARCH=y
-BR2_PACKAGE_RETROARCH_RGUI=y
-BR2_PACKAGE_RETROARCH_HID=y
-BR2_PACKAGE_RETROARCH_ASSETS=y
-# boot straight into RetroArch: default cfg + init script + respawn supervisor
-BR2_PACKAGE_RETROARCH_CONSOLE=y
+# --- frontend: Retro-Zero (LVGL UI, draws straight to /dev/fb0; no GPU needed).
+# Replaces RetroArch, which is no longer built. ---
+BR2_PACKAGE_RETRO_ZERO=y
+# boot straight into it: init script + respawn supervisor
+BR2_PACKAGE_RETRO_ZERO_CONSOLE=y
 BR2_PACKAGE_LIBRETRO_MGBA=y
-# --- more cores: FC/NES, GB/GBC, SFC(SNES), MD/SMS/GG (all ARM-friendly) ---
+# --- cores: FC/NES, GB/GBC, SFC(SNES), MD/SMS/GG (all ARM-friendly) ---
 BR2_PACKAGE_LIBRETRO_FCEUMM=y
 BR2_PACKAGE_LIBRETRO_GAMBATTE=y
 BR2_PACKAGE_LIBRETRO_SNES9X2005=y
 BR2_PACKAGE_LIBRETRO_PICODRIVE=y
+# RetroArch and its SDL driver are gone; the cores above are frontend-agnostic
+# and Retro-Zero draws to /dev/fb0 itself, so SDL is not built at all.
+# BR2_PACKAGE_RETROARCH is not set
+# BR2_PACKAGE_SDL is not set
 BR2_ROOTFS_OVERLAY+="board/rockchip/rk3506/fs-retrogaming-overlay/"
-BR2_PACKAGE_SDL=y
-BR2_PACKAGE_SDL_FBCON=y

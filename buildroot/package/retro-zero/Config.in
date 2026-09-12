@@ -1,0 +1,37 @@
+config BR2_PACKAGE_RETRO_ZERO
+	bool "retro-zero"
+	depends on BR2_INSTALL_LIBSTDCPP
+	select BR2_PACKAGE_ALSA_LIB
+	help
+	  Retro-Zero is a Libretro frontend with an LVGL user interface,
+	  designed for small handhelds. It draws through /dev/fb0, so unlike
+	  RetroArch it needs no GPU, no KMS and no EGL: on this GPU-less
+	  board it runs entirely on the framebuffer.
+
+	  It loads the same libretro cores as RetroArch, so enable the
+	  cores you want (BR2_PACKAGE_LIBRETRO_*) alongside it.
+
+	  Upstream: https://github.com/geo-tp/Retro-Zero
+
+	  Note: upstream ships no LICENSE file, so the code is
+	  all-rights-reserved by default. See package/retro-zero/README.md
+	  before redistributing.
+
+comment "retro-zero needs a toolchain w/ C++"
+	depends on !BR2_INSTALL_LIBSTDCPP
+
+if BR2_PACKAGE_RETRO_ZERO
+
+config BR2_PACKAGE_RETRO_ZERO_CONSOLE
+	bool "retro-zero console integration"
+	help
+	  Install the files that make Retro-Zero the system's front-end on a
+	  dedicated console: an init script that starts it at boot, and a
+	  supervisor that restarts it whenever it exits so the device never
+	  falls back to a blank framebuffer. Also creates the ROM and save
+	  directories.
+
+	  Only enable this on a device dedicated to Retro-Zero. It assumes
+	  the root filesystem is writable for saves.
+
+endif

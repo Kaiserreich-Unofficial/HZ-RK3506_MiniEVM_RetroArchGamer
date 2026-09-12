@@ -1,0 +1,23 @@
+#!/bin/sh
+# Start Retro-Zero at boot and keep it in the foreground.
+#
+# Retro-Zero draws straight to /dev/fb0, so it needs no display server or
+# console-manager dance; unlike RetroArch there is no SDL driver to coax into
+# software rendering, and no SDL_NOMOUSE workaround is required.
+
+case "$1" in
+  start)
+    [ -x /usr/bin/retro-zero ] || exit 0
+    mkdir -p /root/roms /root/saves
+    retro-zero-forever &
+    ;;
+  stop)
+    # kill the supervisor first, else it relaunches retro-zero
+    killall retro-zero-forever 2>/dev/null
+    killall retro-zero 2>/dev/null
+    ;;
+  *)
+    echo "Usage: $0 {start|stop}"
+    exit 1
+    ;;
+esac

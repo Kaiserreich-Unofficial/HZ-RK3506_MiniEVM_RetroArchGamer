@@ -1,6 +1,5 @@
 config BR2_PACKAGE_LIBRETRO_MUPEN64PLUS_NX
         bool "libretro-mupen64plus-next"
-	depends on BR2_PACKAGE_RETROARCH
 	depends on BR2_INSTALL_LIBSTDCPP
         help
           libretro mupen64plus-next core.

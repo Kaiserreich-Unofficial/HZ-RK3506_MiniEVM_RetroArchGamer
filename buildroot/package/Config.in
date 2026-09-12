@@ -320,8 +320,9 @@ menu "Games"
 	source "package/supertuxkart/Config.in"
 	source "package/xorcurses/Config.in"
 
-menu "Libretro cores and retroarch"
+menu "Libretro cores and frontends"
 	source "package/retroarch/Config.in"
+	source "package/retro-zero/Config.in"
 endmenu
 
 endmenu
