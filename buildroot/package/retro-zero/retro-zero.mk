@@ -61,6 +61,8 @@ define RETRO_ZERO_CONSOLE_INSTALL_TARGET_CMDS
 		$(TARGET_DIR)/usr/bin/retro-zero-forever
 	$(INSTALL) -D -m 0755 $(RETRO_ZERO_PKGDIR)/console/S99retrozero \
 		$(TARGET_DIR)/etc/init.d/S99retrozero
+	$(INSTALL) -D -m 0644 $(RETRO_ZERO_PKGDIR)/console/wqy-cjk.ttf \
+		$(TARGET_DIR)/usr/share/fonts/wqy-cjk.ttf
 	mkdir -p $(TARGET_DIR)/root/saves $(TARGET_DIR)/root/states \
 		$(TARGET_DIR)/root/roms
 endef

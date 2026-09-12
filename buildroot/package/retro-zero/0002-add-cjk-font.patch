@@ -1,0 +1,523 @@
+diff --git a/lv_conf.h b/lv_conf.h
+index c7fb4cf..305dc35 100644
+--- a/lv_conf.h
++++ b/lv_conf.h
+@@ -35,4 +35,20 @@
+ #define LV_USE_ASSERT_MEM_INTEGRITY 0
+ #define LV_USE_ASSERT_OBJ 0
+ 
++
++// Filesystem access: needed by tiny_ttf to load the CJK font from the
++// root filesystem. The 'A:' prefix in LVGL paths is stripped and the rest is
++// passed to fopen() as an absolute path (LV_FS_STDIO_PATH is empty).
++#define LV_USE_FS_STDIO 1
++#define LV_FS_STDIO_LETTER 'A'
++#define LV_FS_STDIO_PATH ""
++#define LV_FS_STDIO_CACHE_SIZE 0
++
++// TrueType renderer (stb_truetype based, no external library). Latin-only
++// built-in fonts cannot display Chinese filenames.
++#define LV_USE_TINY_TTF 1
++// FILE_SUPPORT defaults to 0, which hides lv_tiny_ttf_create_file()
++#define LV_TINY_TTF_FILE_SUPPORT 1
++#define LV_TINY_TTF_CACHE_GLYPH_CNT 200
++#define LV_TINY_TTF_USE_IO_BUFFER 0
+ #endif
+diff --git a/src/UI/app_ui.cpp b/src/UI/app_ui.cpp
+index c8a4de0..d9ab0af 100644
+--- a/src/UI/app_ui.cpp
++++ b/src/UI/app_ui.cpp
+@@ -6,6 +6,7 @@ LV_FONT_DECLARE(lv_font_montserrat_16)
+ 
+ #include "app_ui.h"
+ #include "app_platform.h"
++#include "cjk_font.h"
+ #include "app_settings.h"
+ #include "launch_controls_view.h"
+ #include "rom_browser.h"
+@@ -182,19 +183,19 @@ void build_settings_menu(SettingsPage page)
+     lv_label_set_text(badge_txt, "CFG");
+     lv_obj_center(badge_txt);
+     lv_obj_set_style_text_color(badge_txt, lv_color_hex(0xEAF0FF), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(badge_txt, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(badge_txt, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     g_title = lv_label_create(title_bar);
+     lv_label_set_text(g_title, page == SettingsPage::Main ? "General / Video / Sound / Input" : "Input Remap");
+     lv_obj_set_pos(g_title, 46, 2);
+     lv_obj_set_style_text_color(g_title, lv_color_hex(0xCCCCCC), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(g_title, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(g_title, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     g_filter_label = lv_label_create(g_root);
+     lv_obj_set_width(g_filter_label, 308);
+     lv_obj_set_pos(g_filter_label, 6, 48);
+     lv_label_set_recolor(g_filter_label, true);
+-    lv_obj_set_style_text_font(g_filter_label, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(g_filter_label, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_set_style_text_color(g_filter_label, lv_color_hex(0x666666), LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     g_file_list = lv_obj_create(g_root);
+@@ -258,7 +259,7 @@ void render_settings_rows()
+         lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
+         lv_obj_set_width(label, 300);
+         lv_obj_set_pos(label, 4, 2);
+-        lv_obj_set_style_text_font(label, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++        lv_obj_set_style_text_font(label, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+         lv_obj_set_style_text_color(label,
+                                     lv_color_hex(selected ? 0xEAF0FF : 0xCCCCCC),
+                                     LV_PART_MAIN | LV_STATE_DEFAULT);
+@@ -395,7 +396,7 @@ void show_error_overlay(const std::string &title, const std::string &body)
+     lv_label_set_text(etitle, title.c_str());
+     lv_obj_align(etitle, LV_ALIGN_TOP_LEFT, 0, 0);
+     lv_obj_set_style_text_color(etitle, lv_color_hex(0xFF5555), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(etitle, &lv_font_montserrat_12, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(etitle, cjk_font_12, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_t *emsg = lv_label_create(g_error_overlay);
+     lv_label_set_text(emsg, body.c_str());
+@@ -403,13 +404,13 @@ void show_error_overlay(const std::string &title, const std::string &body)
+     lv_obj_set_width(emsg, 288);
+     lv_obj_align(emsg, LV_ALIGN_TOP_LEFT, 0, 20);
+     lv_obj_set_style_text_color(emsg, lv_color_hex(0xCCCCCC), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(emsg, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(emsg, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_t *hint = lv_label_create(g_error_overlay);
+     lv_label_set_text(hint, "Press any key");
+     lv_obj_align(hint, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+     lv_obj_set_style_text_color(hint, lv_color_hex(0x666666), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(hint, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(hint, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_move_foreground(g_error_overlay);
+ }
+@@ -435,7 +436,7 @@ void show_success_overlay(const std::string &title, const std::string &body)
+     lv_label_set_text(etitle, title.c_str());
+     lv_obj_align(etitle, LV_ALIGN_TOP_LEFT, 0, 0);
+     lv_obj_set_style_text_color(etitle, lv_color_hex(0x7BE58A), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(etitle, &lv_font_montserrat_12, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(etitle, cjk_font_12, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     if (is_rom_upload_ready) {
+         const size_t first_nl = body.find('\n');
+@@ -452,14 +453,14 @@ void show_success_overlay(const std::string &title, const std::string &body)
+         lv_obj_set_width(intro_lbl, 288);
+         lv_obj_align(intro_lbl, LV_ALIGN_TOP_LEFT, 0, 24);
+         lv_obj_set_style_text_color(intro_lbl, lv_color_hex(0xD0E8D2), LV_PART_MAIN | LV_STATE_DEFAULT);
+-        lv_obj_set_style_text_font(intro_lbl, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++        lv_obj_set_style_text_font(intro_lbl, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+         lv_obj_t *addr_lbl = lv_label_create(g_error_overlay);
+         lv_label_set_text(addr_lbl, addr.c_str());
+         lv_obj_set_width(addr_lbl, 288);
+         lv_obj_align(addr_lbl, LV_ALIGN_TOP_LEFT, 0, 38);
+         lv_obj_set_style_text_color(addr_lbl, lv_color_hex(0xF0FFF2), LV_PART_MAIN | LV_STATE_DEFAULT);
+-        lv_obj_set_style_text_font(addr_lbl, &lv_font_montserrat_12, LV_PART_MAIN | LV_STATE_DEFAULT);
++        lv_obj_set_style_text_font(addr_lbl, cjk_font_12, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+         lv_obj_t *rest_lbl = lv_label_create(g_error_overlay);
+         lv_label_set_text(rest_lbl, rest.c_str());
+@@ -467,7 +468,7 @@ void show_success_overlay(const std::string &title, const std::string &body)
+         lv_obj_set_width(rest_lbl, 288);
+         lv_obj_align(rest_lbl, LV_ALIGN_TOP_LEFT, 0, 46);
+         lv_obj_set_style_text_color(rest_lbl, lv_color_hex(0xD0E8D2), LV_PART_MAIN | LV_STATE_DEFAULT);
+-        lv_obj_set_style_text_font(rest_lbl, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++        lv_obj_set_style_text_font(rest_lbl, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+     } else {
+         lv_obj_t *emsg = lv_label_create(g_error_overlay);
+         lv_label_set_text(emsg, body.c_str());
+@@ -475,14 +476,14 @@ void show_success_overlay(const std::string &title, const std::string &body)
+         lv_obj_set_width(emsg, 288);
+         lv_obj_align(emsg, LV_ALIGN_TOP_LEFT, 0, 24);
+         lv_obj_set_style_text_color(emsg, lv_color_hex(0xD0E8D2), LV_PART_MAIN | LV_STATE_DEFAULT);
+-        lv_obj_set_style_text_font(emsg, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++        lv_obj_set_style_text_font(emsg, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+     }
+ 
+     lv_obj_t *hint = lv_label_create(g_error_overlay);
+     lv_label_set_text(hint, "Press any key");
+     lv_obj_align(hint, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+     lv_obj_set_style_text_color(hint, lv_color_hex(0x666666), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(hint, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(hint, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_move_foreground(g_error_overlay);
+ }
+@@ -583,14 +584,14 @@ void show_core_download_prompt(int console_index, const std::string &rom)
+     lv_label_set_text(title, "Core missing");
+     lv_obj_align(title, LV_ALIGN_TOP_LEFT, 0, 0);
+     lv_obj_set_style_text_color(title, lv_color_hex(0xFFB066), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(title, &lv_font_montserrat_12, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(title, cjk_font_12, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_t *msg = lv_label_create(g_core_prompt_overlay);
+     g_core_prompt_msg = msg;
+     lv_label_set_text(msg, "Do you want to download the core?");
+     lv_obj_align(msg, LV_ALIGN_TOP_LEFT, 0, 22);
+     lv_obj_set_style_text_color(msg, lv_color_hex(0xCCCCCC), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(msg, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(msg, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     g_core_prompt_left = lv_obj_create(g_core_prompt_overlay);
+     lv_obj_set_size(g_core_prompt_left, 56, 20);
+@@ -641,14 +642,14 @@ void show_settings_reset_prompt()
+     lv_label_set_text(title, "Reset settings");
+     lv_obj_align(title, LV_ALIGN_TOP_LEFT, 0, 0);
+     lv_obj_set_style_text_color(title, lv_color_hex(0xC9DBF5), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(title, &lv_font_montserrat_12, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(title, cjk_font_12, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_t *msg = lv_label_create(g_core_prompt_overlay);
+     g_core_prompt_msg = msg;
+     lv_label_set_text(msg, "Restore default config values?");
+     lv_obj_align(msg, LV_ALIGN_TOP_LEFT, 0, 22);
+     lv_obj_set_style_text_color(msg, lv_color_hex(0xCCCCCC), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(msg, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(msg, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     g_core_prompt_left = lv_obj_create(g_core_prompt_overlay);
+     lv_obj_set_size(g_core_prompt_left, 56, 20);
+@@ -719,7 +720,7 @@ void build_header()
+     lv_obj_set_width(brand, 156);
+     lv_obj_set_style_text_align(brand, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_set_style_text_color(brand, lv_color_hex(0x666666), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(brand, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(brand, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_t *ver_badge = lv_obj_create(header);
+     lv_obj_set_size(ver_badge, 44, 14);
+@@ -736,13 +737,13 @@ void build_header()
+     lv_label_set_text(ver_txt, "v0.1");
+     lv_obj_center(ver_txt);
+     lv_obj_set_style_text_color(ver_txt, lv_color_hex(0xBFD8F5), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(ver_txt, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(ver_txt, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     g_time_label = lv_label_create(header);
+     lv_label_set_text(g_time_label, "--:--");
+     lv_obj_set_pos(g_time_label, 220, 8);
+     lv_obj_set_style_text_color(g_time_label, lv_color_hex(0xCCCCCC), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(g_time_label, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(g_time_label, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_t *bat_box = lv_obj_create(header);
+     lv_obj_set_size(bat_box, 56, 15);
+@@ -769,7 +770,7 @@ void build_header()
+     lv_label_set_text(g_power_label, "--%");
+     lv_obj_center(g_power_label);
+     lv_obj_set_style_text_color(g_power_label, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(g_power_label, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(g_power_label, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ }
+ 
+ void style_card(CarouselCard &card, int console_index, int slot)
+@@ -799,11 +800,11 @@ void style_card(CarouselCard &card, int console_index, int slot)
+ 
+     lv_obj_set_style_text_color(card.code, lv_color_hex(center ? console.accent : 0xCCCCCC),
+                                 LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(card.code, center ? &lv_font_montserrat_28 : &lv_font_montserrat_20,
++    lv_obj_set_style_text_font(card.code, center ? cjk_font_28 : cjk_font_20,
+                                LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_set_style_text_color(card.name, lv_color_hex(center ? 0xDDDDDD : 0x777777),
+                                 LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(card.name, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(card.name, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_set_size(card.logo_badge, center ? 34 : 30, center ? 14 : 12);
+     lv_obj_align(card.logo_badge, LV_ALIGN_TOP_LEFT, center ? 8 : 6, center ? 7 : 6);
+@@ -813,7 +814,7 @@ void style_card(CarouselCard &card, int console_index, int slot)
+     lv_obj_set_style_border_width(card.logo_badge, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_set_style_pad_all(card.logo_badge, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_set_style_text_color(card.logo_text, lv_color_hex(0x0A0A0A), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(card.logo_text, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(card.logo_text, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ }
+ 
+ 
+@@ -934,7 +935,7 @@ void build_console_picker()
+     build_header();
+ 
+     g_title = make_label(g_root, "", 26, 0xFFFFFF);
+-    lv_obj_set_style_text_font(g_title, &lv_font_montserrat_12, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(g_title, cjk_font_12, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     for (int i = 1; i <= 3; ++i) {
+         g_cards[i].panel = lv_obj_create(g_root);
+@@ -1018,7 +1019,7 @@ void render_file_rows()
+         lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
+         lv_obj_set_width(label, 300);
+         lv_obj_set_pos(label, 4, 2);
+-        lv_obj_set_style_text_font(label, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++        lv_obj_set_style_text_font(label, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+         lv_obj_set_style_text_color(label,
+                                     lv_color_hex(selected ? 0x080808 : (entry.dir ? 0x88BBFF : 0xCCCCCC)),
+                                     LV_PART_MAIN | LV_STATE_DEFAULT);
+@@ -1060,7 +1061,7 @@ void render_file_rows()
+         lv_obj_set_width(label, 238);
+         lv_obj_center(label);
+         lv_obj_set_style_text_color(label, lv_color_hex(0xC7C7C7), LV_PART_MAIN | LV_STATE_DEFAULT);
+-        lv_obj_set_style_text_font(label, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++        lv_obj_set_style_text_font(label, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+         lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+         lv_obj_move_foreground(g_no_results_box);
+     }
+@@ -1112,13 +1113,13 @@ void build_file_picker()
+     lv_label_set_text(badge_txt, con.shortName);
+     lv_obj_center(badge_txt);
+     lv_obj_set_style_text_color(badge_txt, lv_color_hex(0x080808), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(badge_txt, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(badge_txt, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     g_title = lv_label_create(title_bar);
+     lv_label_set_text(g_title, con.name);
+     lv_obj_set_pos(g_title, 46, 2);
+     lv_obj_set_style_text_color(g_title, lv_color_hex(0xCCCCCC), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(g_title, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(g_title, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_t *back_hint = lv_label_create(title_bar);
+     std::string core_hint = core_hint_for_file_picker();
+@@ -1128,28 +1129,28 @@ void build_file_picker()
+     lv_obj_align(back_hint, LV_ALIGN_RIGHT_MID, -6, 0);
+     lv_obj_set_style_text_align(back_hint, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_set_style_text_color(back_hint, lv_color_hex(0x444444), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(back_hint, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(back_hint, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     g_path_label = lv_label_create(g_root);
+     lv_label_set_text(g_path_label, g_rom_dir.c_str());
+     lv_label_set_long_mode(g_path_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+     lv_obj_set_width(g_path_label, 308);
+     lv_obj_set_pos(g_path_label, 6, 47);
+-    lv_obj_set_style_text_font(g_path_label, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(g_path_label, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_set_style_text_color(g_path_label, lv_color_hex(0x4A4A4A), LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     g_filter_label = lv_label_create(g_root);
+     lv_obj_set_width(g_filter_label, 210);
+     lv_obj_set_pos(g_filter_label, 6, 60);
+     lv_label_set_recolor(g_filter_label, true);
+-    lv_obj_set_style_text_font(g_filter_label, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(g_filter_label, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_set_style_text_color(g_filter_label, lv_color_hex(0x666666), LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     g_count_label = lv_label_create(g_root);
+     lv_obj_set_width(g_count_label, 98);
+     lv_obj_set_pos(g_count_label, 216, 60);
+     lv_obj_set_style_text_align(g_count_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(g_count_label, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(g_count_label, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_set_style_text_color(g_count_label, lv_color_hex(0x555555), LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_t *sep = lv_obj_create(g_root);
+@@ -1220,13 +1221,13 @@ void blank_before_launch()
+             lv_obj_t *title = lv_label_create(g_root);
+             lv_label_set_text(title, "Loading");
+             lv_obj_set_style_text_color(title, lv_color_hex(0xEAF6FF), LV_PART_MAIN | LV_STATE_DEFAULT);
+-            lv_obj_set_style_text_font(title, &lv_font_montserrat_20, LV_PART_MAIN | LV_STATE_DEFAULT);
++            lv_obj_set_style_text_font(title, cjk_font_20, LV_PART_MAIN | LV_STATE_DEFAULT);
+             lv_obj_align(title, LV_ALIGN_CENTER, 0, -28);
+ 
+             lv_obj_t *system = lv_label_create(g_root);
+             lv_label_set_text(system, console.name ? console.name : "Game");
+             lv_obj_set_style_text_color(system, lv_color_hex(0x8FB6D6), LV_PART_MAIN | LV_STATE_DEFAULT);
+-            lv_obj_set_style_text_font(system, &lv_font_montserrat_12, LV_PART_MAIN | LV_STATE_DEFAULT);
++            lv_obj_set_style_text_font(system, cjk_font_12, LV_PART_MAIN | LV_STATE_DEFAULT);
+             lv_obj_align(system, LV_ALIGN_CENTER, 0, -4);
+ 
+             lv_obj_t *track = lv_obj_create(g_root);
+@@ -1752,6 +1753,7 @@ bool run_app_ui(std::string &core_path, std::string &rom_path)
+     g_error_overlay = nullptr;
+ 
+     lv_init();
++    cjk_fonts_init();
+     lv_display_t *display = init_ui_display();
+     if (!display) {
+         return false;
+diff --git a/src/UI/cjk_font.cpp b/src/UI/cjk_font.cpp
+new file mode 100644
+index 0000000..f0fa568
+--- /dev/null
++++ b/src/UI/cjk_font.cpp
+@@ -0,0 +1,48 @@
++#include "cjk_font.h"
++
++#include <cstdio>
++
++// Latin-only built-in faces cannot display Chinese filenames, so the UI text
++// is switched to a TrueType with CJK coverage once it is loaded from the root
++// filesystem. tiny_ttf reads glyphs on demand through lv_fs, so the whole file
++// is never resident.
++
++#ifndef CP0_CJK_FONT_PATH
++#define CP0_CJK_FONT_PATH "A:/usr/share/fonts/wqy-cjk.ttf"
++#endif
++
++const lv_font_t *cjk_font_10 = &lv_font_montserrat_10;
++const lv_font_t *cjk_font_12 = &lv_font_montserrat_12;
++const lv_font_t *cjk_font_20 = &lv_font_montserrat_20;
++const lv_font_t *cjk_font_28 = &lv_font_montserrat_28;
++
++bool cjk_fonts_init()
++{
++    struct Slot {
++        int32_t size;
++        const lv_font_t **font;
++    };
++
++    const Slot slots[] = {
++        { 10, &cjk_font_10 },
++        { 12, &cjk_font_12 },
++        { 20, &cjk_font_20 },
++        { 28, &cjk_font_28 },
++    };
++
++    bool loaded = false;
++    for (const Slot &s : slots) {
++        lv_font_t *face = lv_tiny_ttf_create_file(CP0_CJK_FONT_PATH, s.size);
++        if (face) {
++            *s.font = face;
++            loaded = true;
++        }
++    }
++
++    if (!loaded) {
++        std::fprintf(stderr,
++                     "cp0-retro: CJK font %s unavailable, keeping Latin-only Montserrat\n",
++                     CP0_CJK_FONT_PATH);
++    }
++    return loaded;
++}
+diff --git a/src/UI/cjk_font.h b/src/UI/cjk_font.h
+new file mode 100644
+index 0000000..f16d5da
+--- /dev/null
++++ b/src/UI/cjk_font.h
+@@ -0,0 +1,19 @@
++#ifndef CP0_CJK_FONT_H
++#define CP0_CJK_FONT_H
++
++#include <lvgl.h>
++
++// CJK-capable text fonts. Before cjk_fonts_init() runs they point at the
++// built-in Montserrat faces, which only cover Latin — so Chinese filenames
++// would draw as missing glyphs.
++extern const lv_font_t *cjk_font_10;
++extern const lv_font_t *cjk_font_12;
++extern const lv_font_t *cjk_font_20;
++extern const lv_font_t *cjk_font_28;
++
++// Loads the CJK TrueType via LVGL's tiny_ttf at the sizes the UI uses.
++// If the font file is unavailable the Montserrat fallbacks stay in place and
++// false is returned; the UI still works, just without Chinese glyphs.
++bool cjk_fonts_init();
++
++#endif // CP0_CJK_FONT_H
+diff --git a/src/UI/launch_controls_view.cpp b/src/UI/launch_controls_view.cpp
+index 727e3d6..0005175 100644
+--- a/src/UI/launch_controls_view.cpp
++++ b/src/UI/launch_controls_view.cpp
+@@ -6,6 +6,7 @@
+ #include <cstring>
+ #include <string>
+ #include <vector>
++#include "cjk_font.h"
+ 
+ namespace {
+ 
+@@ -100,7 +101,7 @@ lv_obj_t *make_launch_chip(lv_obj_t *parent, int x, int y, int w, int h,
+     lv_label_set_text(txt, label);
+     lv_obj_center(txt);
+     lv_obj_set_style_text_color(txt, lv_color_hex(text), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(txt, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(txt, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+     return chip;
+ }
+ 
+@@ -165,13 +166,13 @@ void draw_launch_controls_screen(
+     lv_label_set_text(title, heading.c_str());
+     lv_obj_set_pos(title, 12, 10);
+     lv_obj_set_style_text_color(title, lv_color_hex(0xF0F0F0), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(title, &lv_font_montserrat_12, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(title, cjk_font_12, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_t *sub = lv_label_create(panel);
+     lv_label_set_text(sub, hints.title);
+     lv_obj_set_pos(sub, 12, 28);
+     lv_obj_set_style_text_color(sub, lv_color_hex(console.accent), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(sub, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(sub, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_t *rom_lbl = lv_label_create(panel);
+     lv_label_set_text(rom_lbl, file_name_from_path(rom).c_str());
+@@ -180,13 +181,13 @@ void draw_launch_controls_screen(
+     lv_obj_set_pos(rom_lbl, 116, 12);
+     lv_obj_set_style_text_align(rom_lbl, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_set_style_text_color(rom_lbl, lv_color_hex(0x888888), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(rom_lbl, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(rom_lbl, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_t *fn_hint = lv_label_create(panel);
+     lv_label_set_text(fn_hint, "FN+Arrows: Vol/Bright");
+     lv_obj_set_pos(fn_hint, 10, compact ? 138 : 158);
+     lv_obj_set_style_text_color(fn_hint, lv_color_hex(0x696974), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(fn_hint, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(fn_hint, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_t *pad = lv_obj_create(panel);
+     lv_obj_set_size(pad, 264, pad_h);
+@@ -206,27 +207,27 @@ void draw_launch_controls_screen(
+     lv_label_set_text(up, up_key.c_str());
+     lv_obj_set_pos(up, 37 + pad_dx, 5);
+     lv_obj_set_style_text_color(up, lv_color_hex(0xD7D7E0), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(up, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(up, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_t *left = lv_label_create(pad);
+     lv_label_set_text(left, left_key.c_str());
+     lv_obj_set_pos(left, 12 + pad_dx, 30);
+     lv_obj_set_style_text_color(left, lv_color_hex(0xD7D7E0), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(left, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(left, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_t *down = lv_label_create(pad);
+     lv_label_set_text(down, down_key.c_str());
+     lv_obj_set_pos(down, 37 + pad_dx, 51);
+     lv_obj_set_style_text_color(down, lv_color_hex(0xD7D7E0), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(down, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(down, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_t *right = lv_label_create(pad);
+     lv_label_set_text(right, right_key.c_str());
+     lv_obj_set_pos(right, 62 + pad_dx, 30);
+     lv_obj_set_style_text_color(right, lv_color_hex(0xD7D7E0), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(right, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(right, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_t *dpad_hint = lv_label_create(pad);
+     lv_label_set_text(dpad_hint, "D-Pad");
+     lv_obj_set_pos(dpad_hint, 24 + pad_dx, dpad_hint_y);
+     lv_obj_set_style_text_color(dpad_hint, lv_color_hex(0x8B8B97), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(dpad_hint, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(dpad_hint, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     // Action buttons grid follows the physical Cardputer rows:
+     // - default: J / K / L
+@@ -265,17 +266,17 @@ void draw_launch_controls_screen(
+     lv_label_set_text(selsta, selsta_text.c_str());
+     lv_obj_set_pos(selsta, 86 + pad_dx, selsta_y);
+     lv_obj_set_style_text_color(selsta, lv_color_hex(0x8C8C96), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(selsta, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(selsta, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_t *quit_hint = lv_label_create(pad);
+     lv_label_set_text(quit_hint, "Quit=TAB");
+     lv_obj_align(quit_hint, LV_ALIGN_BOTTOM_RIGHT, -8, -6);
+     lv_obj_set_style_text_color(quit_hint, lv_color_hex(0x9A9AA5), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(quit_hint, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(quit_hint, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_t *foot = lv_label_create(panel);
+     lv_label_set_text(foot, "Press any key to start");
+     lv_obj_align(foot, LV_ALIGN_BOTTOM_RIGHT, -12, -6);
+     lv_obj_set_style_text_color(foot, lv_color_hex(0x7A7A84), LV_PART_MAIN | LV_STATE_DEFAULT);
+-    lv_obj_set_style_text_font(foot, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(foot, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ }
