@@ -1,0 +1,386 @@
+diff -ruN a/src/Core/core_registry.cpp b/src/Core/core_registry.cpp
+--- a/src/Core/core_registry.cpp	
++++ b/src/Core/core_registry.cpp	
+@@ -82,6 +82,14 @@
+             "gg", false, true
+         },
+         {
++            "music", "Music", "MP3", "CP0_TOOL_MUSIC",
++            "", "",
++            {".mp3"},
++            0x2ECC71, false,
++            "CP0_ROM_DIR_MUSIC", "/root/roms/music",
++            "", false, false
++        },
++        {
+             "", "Settings", "CFG", "CP0_TOOL_SETTINGS",
+             "", "",
+             {},
+diff -ruN a/src/UI/app_ui.cpp b/src/UI/app_ui.cpp
+--- a/src/UI/app_ui.cpp	
++++ b/src/UI/app_ui.cpp	
+@@ -10,6 +10,7 @@
+ #include "app_settings.h"
+ #include "launch_controls_view.h"
+ #include "rom_browser.h"
++#include "music_player.h"
+ #include "../Core/core_registry.h"
+ #include "../Core/core_downloader.h"
+ #include "../Upload/rom_upload_server.h"
+@@ -1368,6 +1369,10 @@
+     if (g_launching) {
+         return;
+     }
++    if (MusicPlayer::active()) {
++        MusicPlayer::handle_key(raw_code);
++        return;
++    }
+ 
+     if (g_view == View::Settings && g_capture_bind_index >= 0) {
+         if (raw_code == KEY_BACKSPACE || raw_code == KEY_ESC) {
+@@ -1489,6 +1494,13 @@
+                 launch_rom_upload_tool();
+                 return;
+             }
++            if (is_music_console(console)) {
++                g_rom_dir = find_rom_dir_for_console(console);
++                g_filter.clear();
++                g_file_index = 0;
++                build_file_picker();
++                return;
++            }
+             if (is_settings_console(console)) {
+                 build_settings_menu(SettingsPage::Main);
+                 return;
+@@ -1654,6 +1666,19 @@
+                 g_file_index = 0;
+                 build_file_picker();
+             }
++        } else if (is_music_console(g_consoles[g_console_index])) {
++            std::vector<std::string> playlist;
++            int start_index = 0;
++            for (size_t i = 0; i < g_files.size(); ++i) {
++                if (g_files[i].dir) continue;
++                if (i == static_cast<size_t>(g_file_index)) {
++                    start_index = static_cast<int>(playlist.size());
++                }
++                playlist.push_back(g_files[i].path);
++            }
++            if (!MusicPlayer::start(std::move(playlist), start_index)) {
++                show_error_overlay("MP3 player unavailable", "mpg123 is not installed.");
++            }
+         } else {
+             launch_rom(entry.path);
+         }
+@@ -1787,6 +1812,7 @@
+ 
+     while (g_running) {
+         poll_input();
++        MusicPlayer::tick();
+         uint32_t now = lv_tick_get();
+         if (now - last_time_update > 30000) {
+             update_time();
+@@ -1797,6 +1823,7 @@
+     }
+ 
+ 
++    MusicPlayer::stop();
+     for (int fd : g_input_fds) close(fd);
+     g_input_fds.clear();
+ 
+diff -ruN a/src/UI/music_player.cpp b/src/UI/music_player.cpp
+--- a/src/UI/music_player.cpp	
++++ b/src/UI/music_player.cpp	
+@@ -0,0 +1,230 @@
++#include "music_player.h"
++
++#include "cjk_font.h"
++#include "lvgl/lvgl.h"
++
++#include <linux/input.h>
++#include <signal.h>
++#include <sys/wait.h>
++#include <unistd.h>
++
++#include <cerrno>
++#include <cstdio>
++#include <cstring>
++#include <fcntl.h>
++#include <string>
++#include <vector>
++
++namespace {
++
++struct PlayerState {
++    bool active = false;
++    bool paused = false;
++    pid_t pid = -1;
++    std::vector<std::string> playlist;
++    int index = -1;
++    lv_obj_t *panel = nullptr;
++    lv_obj_t *title = nullptr;
++    lv_obj_t *status = nullptr;
++};
++
++PlayerState g_music;
++
++void close_panel()
++{
++    if (g_music.panel) {
++        lv_obj_del(g_music.panel);
++        g_music.panel = nullptr;
++        g_music.title = nullptr;
++        g_music.status = nullptr;
++    }
++}
++
++void update_status()
++{
++    if (!g_music.status) return;
++    char buf[48];
++    snprintf(buf, sizeof(buf), "%s  %d/%d",
++             g_music.paused ? "暂停" : "播放中",
++             g_music.index + 1, static_cast<int>(g_music.playlist.size()));
++    lv_label_set_text(g_music.status, buf);
++}
++
++void kill_child()
++{
++    if (g_music.pid < 0) return;
++    const pid_t pid = g_music.pid;
++    g_music.pid = -1;
++    // A SIGSTOPped mpg123 queues SIGTERM until SIGCONT, so resume first.
++    kill(pid, SIGCONT);
++    kill(pid, SIGTERM);
++    for (int i = 0; i < 50; ++i) {
++        if (waitpid(pid, nullptr, WNOHANG) == pid) return;
++        usleep(20000);
++    }
++    kill(pid, SIGKILL);
++    while (waitpid(pid, nullptr, 0) != pid && errno == EINTR) {
++    }
++}
++
++std::string track_title(const std::string &path)
++{
++    std::string name = path;
++    const size_t slash = name.find_last_of('/');
++    if (slash != std::string::npos) name = name.substr(slash + 1);
++    if (name.size() > 4 && strcasecmp(name.c_str() + name.size() - 4, ".mp3") == 0) {
++        name.resize(name.size() - 4);
++    }
++    return name;
++}
++
++void spawn_track(int index)
++{
++    if (index < 0 || index >= static_cast<int>(g_music.playlist.size())) return;
++    kill_child();
++
++    const pid_t pid = fork();
++    if (pid == 0) {
++        // Detach stdio and signals so the decoder never touches the UI
++        // console; mpg123 talks to ALSA directly (card 0 = USB sound).
++        const int devnull = open("/dev/null", O_RDWR);
++        if (devnull >= 0) {
++            dup2(devnull, STDIN_FILENO);
++            dup2(devnull, STDOUT_FILENO);
++            dup2(devnull, STDERR_FILENO);
++            if (devnull > STDERR_FILENO) close(devnull);
++        }
++        setsid();
++        execl("/usr/bin/mpg123", "mpg123", "-q", "-o", "alsa",
++              g_music.playlist[index].c_str(), static_cast<char *>(nullptr));
++        _exit(127);
++    }
++    if (pid < 0) return;
++
++    g_music.pid = pid;
++    g_music.index = index;
++    g_music.paused = false;
++
++    if (g_music.title) {
++        lv_label_set_text(g_music.title, track_title(g_music.playlist[index]).c_str());
++    }
++    update_status();
++}
++
++bool spawn_next()
++{
++    if (g_music.index + 1 >= static_cast<int>(g_music.playlist.size())) return false;
++    spawn_track(g_music.index + 1);
++    return true;
++}
++
++void show_panel()
++{
++    close_panel();
++
++    g_music.panel = lv_obj_create(lv_layer_top());
++    lv_obj_set_size(g_music.panel, 308, 106);
++    lv_obj_set_pos(g_music.panel, 6, 58);
++    lv_obj_clear_flag(g_music.panel, LV_OBJ_FLAG_SCROLLABLE);
++    lv_obj_set_style_radius(g_music.panel, 8, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_bg_color(g_music.panel, lv_color_hex(0x081828), LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_bg_opa(g_music.panel, 248, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_border_color(g_music.panel, lv_color_hex(0x3AC6E5), LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_border_width(g_music.panel, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_pad_all(g_music.panel, 10, LV_PART_MAIN | LV_STATE_DEFAULT);
++
++    g_music.title = lv_label_create(g_music.panel);
++    lv_obj_set_width(g_music.title, 288);
++    lv_label_set_long_mode(g_music.title, LV_LABEL_LONG_DOT);
++    lv_obj_align(g_music.title, LV_ALIGN_TOP_LEFT, 0, 0);
++    lv_obj_set_style_text_color(g_music.title, lv_color_hex(0x8FE3FF), LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(g_music.title, cjk_font_12, LV_PART_MAIN | LV_STATE_DEFAULT);
++
++    g_music.status = lv_label_create(g_music.panel);
++    lv_obj_align(g_music.status, LV_ALIGN_TOP_LEFT, 0, 26);
++    lv_obj_set_style_text_color(g_music.status, lv_color_hex(0xBFD8E8), LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(g_music.status, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++
++    lv_obj_t *hint = lv_label_create(g_music.panel);
++    lv_label_set_text(hint, "OK=暂停  F/X=切歌  其他键=停止");
++    lv_obj_set_width(hint, 288);
++    lv_obj_align(hint, LV_ALIGN_BOTTOM_LEFT, 0, 0);
++    lv_obj_set_style_text_color(hint, lv_color_hex(0x5F7A8C), LV_PART_MAIN | LV_STATE_DEFAULT);
++    lv_obj_set_style_text_font(hint, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
++
++    lv_obj_move_foreground(g_music.panel);
++}
++
++} // namespace
++
++namespace MusicPlayer {
++
++bool available()
++{
++    return access("/usr/bin/mpg123", X_OK) == 0;
++}
++
++bool start(std::vector<std::string> playlist, int index)
++{
++    stop();
++    if (playlist.empty() || !available()) return false;
++
++    g_music.playlist = std::move(playlist);
++    show_panel();
++    spawn_track(index);
++    g_music.active = true;
++    return g_music.pid >= 0;
++}
++
++void stop()
++{
++    kill_child();
++    close_panel();
++    g_music.active = false;
++    g_music.paused = false;
++    g_music.playlist.clear();
++    g_music.index = -1;
++}
++
++void tick()
++{
++    if (!g_music.active || g_music.pid < 0) return;
++
++    int status = 0;
++    if (waitpid(g_music.pid, &status, WNOHANG) != g_music.pid) return;
++    g_music.pid = -1;
++
++    if (!spawn_next()) stop();
++}
++
++void handle_key(unsigned raw_code)
++{
++    switch (raw_code) {
++    case KEY_ENTER:
++    case KEY_J:
++    case KEY_K:
++    case KEY_1:
++        g_music.paused = !g_music.paused;
++        if (g_music.pid >= 0) {
++            kill(g_music.pid, g_music.paused ? SIGSTOP : SIGCONT);
++        }
++        update_status();
++        return;
++    case KEY_F: // launcher UP: previous track
++        spawn_track(g_music.index > 0 ? g_music.index - 1 : 0);
++        return;
++    case KEY_X: // launcher DOWN: next track
++        if (!spawn_next()) stop();
++        return;
++    default:
++        stop();
++        return;
++    }
++}
++
++bool active()
++{
++    return g_music.active;
++}
++
++} // namespace MusicPlayer
+diff -ruN a/src/UI/music_player.h b/src/UI/music_player.h
+--- a/src/UI/music_player.h	
++++ b/src/UI/music_player.h	
+@@ -0,0 +1,32 @@
++#ifndef CP0_MUSIC_PLAYER_H
++#define CP0_MUSIC_PLAYER_H
++
++#include <string>
++#include <vector>
++
++// Minimal MP3 jukebox: shells out to /usr/bin/mpg123 (buildroot package),
++// one detached process per track, so no decoder is linked into the UI.
++// The launcher UI calls tick() from its main loop to reap the child and
++// auto-advance, and stop() before teardown or launching a game.
++namespace MusicPlayer {
++
++// Opens the now-playing overlay and starts playlist[index]; false if
++// mpg123 is not installed (no side effects then).
++bool start(std::vector<std::string> playlist, int index);
++
++// Kills the player process and closes the overlay. Safe to call anytime.
++void stop();
++
++// Reaps a finished track and advances; called every UI loop iteration.
++void tick();
++
++// Handles input while the overlay is open: OK toggles pause,
++// UP/DOWN switch track, anything else stops.
++void handle_key(unsigned raw_code);
++
++// True while the now-playing overlay is up (even between tracks).
++bool active();
++
++} // namespace MusicPlayer
++
++#endif // CP0_MUSIC_PLAYER_H
+diff -ruN a/src/UI/rom_browser.cpp b/src/UI/rom_browser.cpp
+--- a/src/UI/rom_browser.cpp	
++++ b/src/UI/rom_browser.cpp	
+@@ -40,6 +40,11 @@
+     return console.envCore && std::strcmp(console.envCore, "CP0_TOOL_SETTINGS") == 0;
+ }
+ 
++bool is_music_console(const CoreConfig &console)
++{
++    return console.envCore && std::strcmp(console.envCore, "CP0_TOOL_MUSIC") == 0;
++}
++
+ namespace {
+ 
+ bool is_supported_rom(const CoreConfig &console, const std::string &name)
+diff -ruN a/src/UI/rom_browser.h b/src/UI/rom_browser.h
+--- a/src/UI/rom_browser.h	
++++ b/src/UI/rom_browser.h	
+@@ -21,6 +21,7 @@
+ // Identifies special launcher entries that are not emulation cores.
+ bool is_rom_upload_console(const CoreConfig &console);
+ bool is_settings_console(const CoreConfig &console);
++bool is_music_console(const CoreConfig &console);
+ 
+ // Lists directories and ROM files accepted by the selected console profile.
+ std::vector<FileEntry> load_rom_entries(

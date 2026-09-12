@@ -33,6 +33,26 @@ ROM directories are remapped to `/root/roms/<system>` in the same patch
 (`/root/roms` is where the FAT32 data partition is mounted, so ROMs are copied
 straight from a PC).
 
+## Patch: 0002-add-cjk-font.patch
+
+tiny_ttf + `wqy-cjk.ttf` (WenQuanYi Micro Hei) give the UI CJK glyphs, exposed
+as `cjk_font_10/12/20/28` and used everywhere `lv_font_montserrat_*` was.
+
+## Patch: 0003-add-music-player.patch
+
+Adds a **Music** card (`/root/roms/music/*.mp3`). Playback shells out to
+`/usr/bin/mpg123 -o alsa`, one detached process per track: OK pauses
+(SIGSTOP/SIGCONT), UP/DOWN switch tracks, any other key stops, tracks
+auto-advance when `waitpid` reaps the player in the UI loop. No decoder is
+linked into the frontend; `BR2_PACKAGE_MPG123` provides the binary.
+
+## Patch: 0004-zh-cn-ui-eth-upload.patch
+
+Localizes the launcher UI to Chinese (settings, prompts, overlays — the glyphs
+come from 0002), and adapts the ROM Upload tool to this board: it accepts any
+non-loopback interface instead of `wl*` only, so uploading works over Ethernet
+at `http://192.168.10.1`, and the upload target is `/root/roms/<system>`.
+
 ## Cores
 
 Retro-Zero loads the same libretro cores as RetroArch. This board ships five

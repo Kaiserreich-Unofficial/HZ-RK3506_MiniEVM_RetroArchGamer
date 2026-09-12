@@ -87,6 +87,15 @@ run_build() {
 }
 
 : > "$LOG"
+BUILD_START=$(date +%s)
+
+# build.sh can exit 0 even when a build hook aborted (its error trap does not
+# always propagate), and a stale output/update/Image/update.img would then be
+# copied as if it were new. Judge success by the log and image freshness.
+build_ok() {
+	! grep -q "^ERROR" "$LOG" && [ -s "$OUT_IMG" ] &&
+		[ "$(stat -c%Y "$OUT_IMG")" -ge "$BUILD_START" ]
+}
 
 say "=========================================="
 say " Building firmware ($(date +%H:%M:%S))"
@@ -97,24 +106,17 @@ fi
 say "Log:   $LOG"
 echo
 
-if ! run_build; then
+if ! run_build && ! build_ok; then
 	if grep -q "network is not able to access" "$LOG"; then
 		say "Flaky sources.buildroot.net check tripped; retrying ..."
-		if ! run_build; then
-			tail -25 "$LOG"
-			fail "Build failed (full log: $LOG)"
-		fi
-	else
-		tail -25 "$LOG"
-		fail "Build failed (full log: $LOG)"
+		: > "$LOG"
+		BUILD_START=$(date +%s)
+		run_build || true
 	fi
 fi
-
-# A run that only selected the board would leave no image; guard against the
-# wrapper silently "succeeding" without producing anything.
-[ -s "$OUT_IMG" ] || {
+build_ok || {
 	tail -25 "$LOG"
-	fail "Build finished but $OUT_IMG was not produced (full log: $LOG)"
+	fail "Build failed (full log: $LOG)"
 }
 
 say "Copying to firmware.img ..."

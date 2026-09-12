@@ -1,0 +1,294 @@
+diff -ruN a/src/Core/core_registry.cpp b/src/Core/core_registry.cpp
+--- a/src/Core/core_registry.cpp	
++++ b/src/Core/core_registry.cpp	
+@@ -82,7 +82,7 @@
+             "gg", false, true
+         },
+         {
+-            "music", "Music", "MP3", "CP0_TOOL_MUSIC",
++            "music", "音乐", "MP3", "CP0_TOOL_MUSIC",
+             "", "",
+             {".mp3"},
+             0x2ECC71, false,
+@@ -90,7 +90,7 @@
+             "", false, false
+         },
+         {
+-            "", "Settings", "CFG", "CP0_TOOL_SETTINGS",
++            "", "设置", "设置", "CP0_TOOL_SETTINGS",
+             "", "",
+             {},
+             0x3D5A80, false,
+@@ -98,7 +98,7 @@
+             "", false, false
+         },
+         {
+-            "", "ROM Upload", "ROM", "CP0_TOOL_ROM_UPLOAD",
++            "", "上传", "上传", "CP0_TOOL_ROM_UPLOAD",
+             "", "",
+             {},
+             0x58C7FF, false,
+diff -ruN a/src/UI/app_ui.cpp b/src/UI/app_ui.cpp
+--- a/src/UI/app_ui.cpp	
++++ b/src/UI/app_ui.cpp	
+@@ -181,13 +181,13 @@
+     lv_obj_set_style_pad_all(badge, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_t *badge_txt = lv_label_create(badge);
+-    lv_label_set_text(badge_txt, "CFG");
++    lv_label_set_text(badge_txt, "设置");
+     lv_obj_center(badge_txt);
+     lv_obj_set_style_text_color(badge_txt, lv_color_hex(0xEAF0FF), LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_set_style_text_font(badge_txt, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     g_title = lv_label_create(title_bar);
+-    lv_label_set_text(g_title, page == SettingsPage::Main ? "General / Video / Sound / Input" : "Input Remap");
++    lv_label_set_text(g_title, page == SettingsPage::Main ? "常规 / 视频 / 声音 / 按键" : "按键映射");
+     lv_obj_set_pos(g_title, 46, 2);
+     lv_obj_set_style_text_color(g_title, lv_color_hex(0xCCCCCC), LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_set_style_text_font(g_title, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+@@ -219,17 +219,17 @@
+ 
+     std::vector<std::string> rows;
+     if (g_settings_page == SettingsPage::Main) {
+-        rows.push_back("General: Reset defaults");
+-        rows.push_back(std::string("Video: Default mode = ") + (g_app_config.default_4x3 ? "4:3" : "Fullscreen"));
+-        rows.push_back("Sound: Default volume = " + std::to_string(g_app_config.volume_percent) + "%");
+-        rows.push_back("Display: Brightness = " + std::to_string(g_app_config.brightness_percent) + "%");
+-        rows.push_back("Input: Remap buttons...");
+-        rows.push_back("Back");
++        rows.push_back("常规: 恢复默认设置");
++        rows.push_back(std::string("视频: 默认画面 = ") + (g_app_config.default_4x3 ? "4:3" : "全屏"));
++        rows.push_back("声音: 默认音量 = " + std::to_string(g_app_config.volume_percent) + "%");
++        rows.push_back("显示: 亮度 = " + std::to_string(g_app_config.brightness_percent) + "%");
++        rows.push_back("按键: 自定义键位...");
++        rows.push_back("返回");
+     } else {
+         for (size_t i = 0; i < g_app_config.binds.size(); ++i) {
+             rows.push_back(std::string(kBindActions[i].label) + " = " + key_name_for_code(g_app_config.binds[i]));
+         }
+-        rows.push_back("Back");
++        rows.push_back("返回");
+     }
+ 
+     if (rows.empty()) return;
+@@ -268,11 +268,11 @@
+ 
+     if (g_filter_label) {
+         if (g_capture_bind_index >= 0) {
+-            lv_label_set_text(g_filter_label, "Press a key to bind, BACKSPACE to cancel");
++            lv_label_set_text(g_filter_label, "按下要绑定的按键, 退格键取消");
+         } else if (g_settings_page == SettingsPage::Main) {
+-            lv_label_set_text(g_filter_label, "Use Left/Right to adjust values");
++            lv_label_set_text(g_filter_label, "左右键调整数值");
+         } else {
+-            lv_label_set_text(g_filter_label, "Enter to rebind selected action");
++            lv_label_set_text(g_filter_label, "回车键重新绑定所选操作");
+         }
+     }
+ }
+@@ -286,12 +286,12 @@
+     UploadServer::StartResult result = UploadServer::start(g_consoles);
+     if (!result.ok) {
+         const std::string title = result.error.find("Wi-Fi") != std::string::npos ?
+-            "Wi-Fi not connected" : "Upload server failed";
++            "网络未连接" : "上传服务启动失败";
+         show_error_overlay(title, result.error);
+         return;
+     }
+ 
+-    show_success_overlay("ROM Upload Ready", result.message);
++    show_success_overlay("上传就绪", result.message);
+ }
+ 
+ 
+@@ -408,7 +408,7 @@
+     lv_obj_set_style_text_font(emsg, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_t *hint = lv_label_create(g_error_overlay);
+-    lv_label_set_text(hint, "Press any key");
++    lv_label_set_text(hint, "按任意键");
+     lv_obj_align(hint, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+     lv_obj_set_style_text_color(hint, lv_color_hex(0x666666), LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_set_style_text_font(hint, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+@@ -420,7 +420,7 @@
+ {
+     dismiss_error_overlay();
+ 
+-    const bool is_rom_upload_ready = (title == "ROM Upload Ready");
++    const bool is_rom_upload_ready = (title == "上传就绪");
+ 
+     g_error_overlay = lv_obj_create(g_root);
+     lv_obj_set_size(g_error_overlay, 308, 106);
+@@ -481,7 +481,7 @@
+     }
+ 
+     lv_obj_t *hint = lv_label_create(g_error_overlay);
+-    lv_label_set_text(hint, "Press any key");
++    lv_label_set_text(hint, "按任意键");
+     lv_obj_align(hint, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+     lv_obj_set_style_text_color(hint, lv_color_hex(0x666666), LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_set_style_text_font(hint, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+@@ -555,7 +555,7 @@
+ {
+     g_core_prompt_busy = busy;
+     if (g_core_prompt_msg) {
+-        lv_label_set_text(g_core_prompt_msg, busy ? "Downloading core... Please wait" : "Do you want to download the core?");
++        lv_label_set_text(g_core_prompt_msg, busy ? "正在下载核心... 请稍候" : "是否下载核心?");
+     }
+     update_core_prompt_choice();
+ }
+@@ -582,14 +582,14 @@
+     lv_obj_set_style_pad_all(g_core_prompt_overlay, 10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_t *title = lv_label_create(g_core_prompt_overlay);
+-    lv_label_set_text(title, "Core missing");
++    lv_label_set_text(title, "缺少核心");
+     lv_obj_align(title, LV_ALIGN_TOP_LEFT, 0, 0);
+     lv_obj_set_style_text_color(title, lv_color_hex(0xFFB066), LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_set_style_text_font(title, cjk_font_12, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_t *msg = lv_label_create(g_core_prompt_overlay);
+     g_core_prompt_msg = msg;
+-    lv_label_set_text(msg, "Do you want to download the core?");
++    lv_label_set_text(msg, "是否下载核心?");
+     lv_obj_align(msg, LV_ALIGN_TOP_LEFT, 0, 22);
+     lv_obj_set_style_text_color(msg, lv_color_hex(0xCCCCCC), LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_set_style_text_font(msg, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+@@ -612,7 +612,7 @@
+     lv_obj_set_style_border_width(g_core_prompt_right, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_clear_flag(g_core_prompt_right, LV_OBJ_FLAG_SCROLLABLE);
+     g_core_prompt_right_label = lv_label_create(g_core_prompt_right);
+-    lv_label_set_text(g_core_prompt_right_label, "OK");
++    lv_label_set_text(g_core_prompt_right_label, "确定");
+     lv_obj_center(g_core_prompt_right_label);
+     lv_obj_set_style_text_color(g_core_prompt_right_label, lv_color_hex(0xF0F0F0), LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+@@ -640,14 +640,14 @@
+     lv_obj_set_style_pad_all(g_core_prompt_overlay, 10, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_t *title = lv_label_create(g_core_prompt_overlay);
+-    lv_label_set_text(title, "Reset settings");
++    lv_label_set_text(title, "重置设置");
+     lv_obj_align(title, LV_ALIGN_TOP_LEFT, 0, 0);
+     lv_obj_set_style_text_color(title, lv_color_hex(0xC9DBF5), LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_set_style_text_font(title, cjk_font_12, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+     lv_obj_t *msg = lv_label_create(g_core_prompt_overlay);
+     g_core_prompt_msg = msg;
+-    lv_label_set_text(msg, "Restore default config values?");
++    lv_label_set_text(msg, "恢复默认配置?");
+     lv_obj_align(msg, LV_ALIGN_TOP_LEFT, 0, 22);
+     lv_obj_set_style_text_color(msg, lv_color_hex(0xCCCCCC), LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_set_style_text_font(msg, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+@@ -670,7 +670,7 @@
+     lv_obj_set_style_border_width(g_core_prompt_right, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_clear_flag(g_core_prompt_right, LV_OBJ_FLAG_SCROLLABLE);
+     g_core_prompt_right_label = lv_label_create(g_core_prompt_right);
+-    lv_label_set_text(g_core_prompt_right_label, "OK");
++    lv_label_set_text(g_core_prompt_right_label, "确定");
+     lv_obj_center(g_core_prompt_right_label);
+     lv_obj_set_style_text_color(g_core_prompt_right_label, lv_color_hex(0xEAF0FF), LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+@@ -1220,7 +1220,7 @@
+             lv_obj_set_style_bg_color(g_root, lv_color_hex(0x071019), LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+             lv_obj_t *title = lv_label_create(g_root);
+-            lv_label_set_text(title, "Loading");
++            lv_label_set_text(title, "启动中");
+             lv_obj_set_style_text_color(title, lv_color_hex(0xEAF6FF), LV_PART_MAIN | LV_STATE_DEFAULT);
+             lv_obj_set_style_text_font(title, cjk_font_20, LV_PART_MAIN | LV_STATE_DEFAULT);
+             lv_obj_align(title, LV_ALIGN_CENTER, 0, -28);
+@@ -1265,7 +1265,7 @@
+     setenv("CP0_SELECTED_ENV_CORE", console.envCore, 1);
+ 
+     if (std::strcmp(console.envCore, "CP0_CORE_GBA") == 0 && lower_ext(rom) == ".zip") {
+-        show_error_overlay("GBA ZIP not supported", "Use .gba ROM files. Please unzip the archive first.");
++        show_error_overlay("不支持GBA压缩包", "请先解压, 再放入.gba文件。");
+         return;
+     }
+ 
+@@ -1276,7 +1276,7 @@
+             find_rom_dir_for_console(g_consoles[g_console_index])
+         );
+         if (!bios.ok) {
+-            show_error_overlay("Missing NeoGeo BIOS", bios.error_body);
++            show_error_overlay("缺少NeoGeo BIOS", bios.error_body);
+             return;
+         }
+         if (!bios.bios_dir.empty()) {
+@@ -1434,7 +1434,7 @@
+                 }
+                 reset_app_config_defaults(g_app_config);
+                 persist_and_apply_app_config(g_app_config);
+-                show_success_overlay("Settings", "Defaults restored.");
++                show_success_overlay("设置", "已恢复默认设置");
+                 render_settings_rows();
+                 return;
+             }
+@@ -1460,11 +1460,11 @@
+             std::string err;
+             if (!CoreDownloader::downloadForConsole(g_consoles[console_index], err)) {
+                 dismiss_core_prompt();
+-                show_error_overlay("Download failed", err);
++                show_error_overlay("下载失败", err);
+                 return;
+             }
+             dismiss_core_prompt();
+-            show_success_overlay("Core installed", "Core downloaded and installed successfully.");
++            show_success_overlay("核心已安装", "核心下载并安装成功。");
+             lv_refr_now(nullptr);
+             usleep(2000000);
+             dismiss_error_overlay();
+@@ -1677,7 +1677,7 @@
+                 playlist.push_back(g_files[i].path);
+             }
+             if (!MusicPlayer::start(std::move(playlist), start_index)) {
+-                show_error_overlay("MP3 player unavailable", "mpg123 is not installed.");
++                show_error_overlay("MP3 播放器不可用", "缺少 mpg123 组件。");
+             }
+         } else {
+             launch_rom(entry.path);
+diff -ruN a/src/Upload/rom_upload_server.cpp b/src/Upload/rom_upload_server.cpp
+--- a/src/Upload/rom_upload_server.cpp	
++++ b/src/Upload/rom_upload_server.cpp	
+@@ -72,7 +72,8 @@
+ 
+     for (ifaddrs *ifa = ifaddr; ifa; ifa = ifa->ifa_next) {
+         if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) continue;
+-        if (!ifa->ifa_name || std::strncmp(ifa->ifa_name, "wl", 2) != 0) continue;
++        // Any interface works - the board has Ethernet, not Wi-Fi.
++        if (!ifa->ifa_name || std::strncmp(ifa->ifa_name, "lo", 2) == 0) continue;
+         if ((ifa->ifa_flags & IFF_UP) == 0) continue;
+ 
+         auto *sa = reinterpret_cast<sockaddr_in *>(ifa->ifa_addr);
+@@ -294,7 +295,7 @@
+         return;
+     }
+ 
+-    const std::string dst_dir = "/home/pi/roms/" + sys;
++    const std::string dst_dir = "/root/roms/" + sys;
+     if (!ensure_dir_exists(dst_dir)) {
+         send_http_response(client_fd, "500 Internal Server Error", "text/plain", "Cannot create destination dir");
+         return;
+@@ -423,7 +424,7 @@
+ 
+     std::string wifi_ip;
+     if (!get_wifi_ipv4(wifi_ip)) {
+-        result.error = "Connect to Wi-Fi first, then retry.\nNeed an active wlan IP.";
++        result.error = "请先插网线建立连接后重试。";
+         return result;
+     }
+ 
+@@ -435,9 +436,9 @@
+ 
+     result.ok = true;
+     result.port = g_server_port;
+-    result.message = "Open from phone/PC:\nhttp://" + wifi_ip +
++    result.message = "手机/电脑浏览器打开:\nhttp://" + wifi_ip +
+         (g_server_port == 80 ? "" : (":" + std::to_string(g_server_port))) +
+-        "\n\nUpload one or multiple ROMs by system\n/home/pi/roms/<sys>";
++        "\n\n按系统上传ROM(可多选)\n/root/roms/<sys>";
+     return result;
+ }
+ 

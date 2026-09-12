@@ -5,7 +5,7 @@
 # Retro-Zero's browser looks in one directory per system, so create them on the
 # card in a stable order. Dropping a file into the matching folder on the GAME
 # drive is all it takes to make it appear in the UI.
-ROM_SYSTEMS="nes snes gb gbc gba md sms gg"
+ROM_SYSTEMS="nes snes gb gbc gba md sms gg music"
 
 DATAPART=""
 for U in /sys/block/mmcblk*/mmcblk*p*/uevent; do

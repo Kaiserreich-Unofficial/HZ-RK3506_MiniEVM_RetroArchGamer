@@ -28,6 +28,11 @@ BR2_PACKAGE_UTIL_LINUX_LIBUUID=y
 # --- input debug ---
 BR2_PACKAGE_EVTEST=y
 BR2_PACKAGE_IPROUTE2=y
+# --- ethernet + file transfer: board is reachable at fixed 192.168.10.1;
+# S45ftpd serves /root over anonymous FTP (busybox ftpd via tcpsvd) ---
+BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES="board/rockchip/common/base/busybox.fragment board/rockchip/rk3506/busybox-game.fragment"
+# MP3 playback for the Retro-Zero Music card (music_player spawns its CLI)
+BR2_PACKAGE_MPG123=y
 # --- retroarch: KMS/DRM software video driver (RK3506 has no GPU) ---
 BR2_PACKAGE_LIBDRM=y
 # --- frontend: Retro-Zero (LVGL UI, draws straight to /dev/fb0; no GPU needed).

@@ -19,6 +19,7 @@ upstream Rockchip repository and **not** a `repo`-tool checkout — see
 | Display | ILI9341 2.8" 320x240 SPI panel, driven by `tinydrm` |
 | Audio | USB sound card (USB Audio Class) |
 | Input | USB OTG: CDC-ACM serial console + USB HID joysticks |
+| Ethernet | gmac0 + RMII PHY, fixed address `192.168.10.1/24` (no Wi-Fi on board) |
 | Storage | TF card, GPT: `oem` / `userdata` / `rootfs` / `data` |
 | Firmware | Retro-Zero front-end (LVGL UI over `/dev/fb0`) + libretro cores |
 
@@ -102,10 +103,18 @@ board-specific:
 
 - `etc/init.d/S20data` — first boot: formats the leftover GPT `data` partition
   as FAT32 (label `GAME`), retypes its GPT GUID to "Microsoft basic data" so
-  Windows assigns a drive letter, then mounts it at `/root/roms`.
+  Windows assigns a drive letter, then mounts it at `/root/roms` and creates
+  the per-system folders (`nes`, `snes`, `gb`, `gbc`, `gba`, `md`, `sms`,
+  `gg`, `music`).
+- `etc/network/interfaces` — static `192.168.10.1/24` on `eth0`.
+- `etc/init.d/S45ftpd` — anonymous FTP (busybox `ftpd` via `tcpsvd`, write
+  enabled) rooted at `/root`, so ROMs and music can be pushed from a PC.
 - `etc/inittab` — a getty on the USB gadget serial (`ttyGS0`).
 - `etc/init.d/S40usbserial`, `S50usbdevice.sh` — USB gadget setup.
 - `root/overmyhead.wav` — 16-bit/44.1kHz stereo test/boot audio.
+
+`buildroot/board/rockchip/rk3506/busybox-game.fragment` adds the `ftpd` and
+`tcpsvd` applets to busybox for the FTP server.
 
 ### Emulator cores
 
@@ -121,6 +130,31 @@ All are ARM-friendly and built for the A7. There is no NDS core: the RK3506 has
 no GPU and only two A7 cores, and the buildroot tree ships no melonds/desmume
 package. The vendor Kodi packages were removed as well — this device is a
 dedicated emulation console, and nothing in the tree depended on them.
+
+### MP3 music, Ethernet, FTP, Chinese UI
+
+`0003-add-music-player.patch` adds a **音乐 (Music)** card to the Retro-Zero
+launcher. It browses `/root/roms/music/*.mp3` (that folder is on the FAT32
+`GAME` partition, so it can also be filled from Windows) and plays through
+`mpg123` (`-o alsa`), one detached process per track; OK pauses, UP/DOWN
+switch tracks, any other key stops, and tracks auto-advance. No decoder is
+linked into the frontend.
+
+`0004-zh-cn-ui-eth-upload.patch` localizes the launcher UI to Chinese (menus,
+settings, prompts and hints — the CJK font work from `0002` covers the glyphs)
+and reworks the ROM Upload tool for this board: it now binds to any interface
+instead of Wi-Fi only, so uploading over `http://192.168.10.1` works, and the
+upload target is `/root/roms/<system>`.
+
+Networking: the board DTS already enables `gmac0` (RMII PHY); the kernel
+fragment bakes `stmmac-platform` + `dwmac-rockchip` in (instead of modules
+loaded by a udev coldplug race) and enables the common PHY drivers. `eth0`
+comes up as `192.168.10.1/24` — point a PC at e.g. `192.168.10.2/24` and use
+either the FTP server (`ftp://192.168.10.1`, anonymous, read/write into
+`/root`) or the browser upload page. The SDK's Wi-Fi/BT stage (`RK_WIFIBT`)
+is disabled in the board defconfig: there is no Wi-Fi hardware, so the
+`RTL8188EU` module, firmware and `S36wifibt` init script are no longer built
+or shipped.
 
 ## Partition layout
 
