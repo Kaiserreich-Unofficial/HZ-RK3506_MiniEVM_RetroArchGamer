@@ -26,11 +26,12 @@ RK3506G2, dual Cortex-A7, no GPU), running Buildroot with
 | 屏幕 | ILI9341 2.8 寸 320x240 SPI 屏，`tinydrm` 驱动 |
 | 音频 | USB 声卡（USB Audio Class） |
 | 输入 | USB OTG：CDC-ACM 串口控制台 + USB HID 摇杆 |
-| 有线网 | gmac0 + RMII PHY，固定地址 `192.168.10.1/24`（板载无 Wi-Fi） |
+| 网络 | 无。以太网在设备树中禁用，没有任何联网服务——纯离线设备，传文件走 USB |
 | 存储 | TF 卡，GPT 分区：`oem` / `userdata` / `rootfs` / `data` |
 | 固件 | Retro-Zero 前端（LVGL 直绘 `/dev/fb0`）+ libretro 模拟器核心 |
 
 调试控制台走 USB gadget 串口（`/dev/ttyGS0`），电脑上显示为一个 COM 口。
+传 ROM/音乐走同一个 OTG 口的 **USB 虚拟盘**（mass-storage gadget，见下文）。
 Retro-Zero 开机直接进入 ROM 浏览器，并由守护脚本负责拉起——退出、重启或崩溃
 都会回到浏览器，而不是停在黑屏上。
 
@@ -42,13 +43,12 @@ Retro-Zero 开机直接进入 ROM 浏览器，并由守护脚本负责拉起—�
 |---|---|
 | `device/rockchip/.chips/rk3506/HZ-RK3506G2_MiniEVM_TF_defconfig` | 板级 defconfig：选择 DTS、内核配置片段、根文件系统 overlay |
 | `device/rockchip/.chips/rk3506/parameter-EMMC.txt` | 分区表 + 内核命令行（`root=PARTUUID=...`） |
-| `kernel-6.1/arch/arm/boot/dts/HZ-RK3506G2_MiniEVM_TF.dts` | 板级 DTS：SPI 屏、背光、无 SoC 声卡 |
-| `kernel-6.1/arch/arm/configs/rk3506-game.config` | 内核片段：tinydrm、USB 声卡、VT/logo、gadget 串口、内建以太网驱动 |
+| `kernel-6.1/arch/arm/boot/dts/HZ-RK3506G2_MiniEVM_TF.dts` | 板级 DTS：SPI 屏（50MHz）、背光、无 SoC 声卡、以太网 gmac0 禁用 |
+| `kernel-6.1/arch/arm/configs/rk3506-game.config` | 内核片段：tinydrm、USB 声卡、VT/logo、gadget 串口 + mass storage、以太网驱动禁用 |
 | `kernel-6.1/arch/arm/configs/rk3506-display.config` | 显示片段 |
-| `buildroot/configs/rockchip_rk3506_game_defconfig` | Buildroot：Retro-Zero、模拟器核心、mpg123、busybox ftpd 片段 |
+| `buildroot/configs/rockchip_rk3506_game_defconfig` | Buildroot：Retro-Zero、模拟器核心、mpg123 |
 | `buildroot/package/retro-zero/` | Retro-Zero 前端 package（含 `console/` 下的开机集成） |
-| `buildroot/board/rockchip/rk3506/fs-retrogaming-overlay/` | 板级 overlay：inittab、data 分区初始化、静态 IP、FTP 服务、USB 串口、开机音频 |
-| `buildroot/board/rockchip/rk3506/busybox-game.fragment` | busybox 附加配置：`ftpd` + `tcpsvd` |
+| `buildroot/board/rockchip/rk3506/fs-retrogaming-overlay/` | 板级 overlay：inittab、data 分区初始化、USB 串口、开机音频 |
 | `buildroot/package/retroarch/libretro-*/` | 模拟器核心 package（编译参数、下载校验） |
 
 音频刻意做成 USB-only：原来的 MAX98357A I2S 功放支持（SoC `sai0`、codec 节点、
@@ -71,7 +71,7 @@ Libretro 前端，在这里取代了 RetroArch。这块无 GPU 的板子上，�
 `BR2_PACKAGE_RETRO_ZERO_CONSOLE` 后面：`S99retrozero`（开机启动）和
 `retro-zero-forever`（守护拉起）。
 
-### 四个上游适配补丁
+### 七个上游适配补丁
 
 `package/retro-zero/` 下的补丁处理上游对本板不适用的地方：
 
@@ -87,8 +87,17 @@ Libretro 前端，在这里取代了 RetroArch。这块无 GPU 的板子上，�
   通过 `mpg123 -o alsa` 播放，每首歌一个独立进程：确认键暂停、上/下切歌、
   其他键停止、播完自动下一首。前端本身不链接任何解码库。
 - **`0004-zh-cn-ui-eth-upload.patch`** — 界面全面汉化（菜单、设置、弹窗、提示，
-  字形来自 0002）；ROM 上传工具改为绑定任意非回环网卡（本板走以太网而非
-  Wi-Fi），上传地址 `http://192.168.10.1`，落盘目录 `/root/roms/<系统>`。
+  字形来自 0002）；原带一个依赖以太网的浏览器上传工具，后被 0007 取代。
+- **`0005-usb-gamepad-support.patch`** — 原生手柄层：现代 Linux 手柄标准
+  `BTN_*` 映射 + 复古双摇杆（0810:0001）自动配置、ABS 轴 + HAT 十字键、
+  游戏内直接映射 Libretro 按键、菜单消费抽象方向/确认/返回、每秒热插拔扫描；
+  SELECT+START 退回菜单。另含 GB 强制 DMG 模式等核心选项修正。
+- **`0006-move-page-dots.patch`** — 轮播页圆点下移，不遮卡片内容。
+- **`0007-usb-virtual-disk.patch`** — 把"上传"工具重做成 **USB 虚拟盘**：
+  菜单项改名"USB虚拟盘"；进入时 umount `/root/roms`，在 `S40usbserial` 建好的
+  g1 复合 gadget 上挂 `mass_storage.0` 功能并重绑 UDC（串口控制台保留），
+  Windows 直接弹出 GAME 磁盘；按任意键退出时卸下 LUN 并重新挂载数据分区。
+  替代了 0004 里的网络上传方案。
 
 ### 模拟器核心
 
@@ -107,18 +116,15 @@ A7，buildroot 树里也没有 melonds/desmume 包。厂商的 Kodi 相关包同
 核心 package 原本被厂商 gate 在 `BR2_PACKAGE_RETROARCH` 之后；该依赖已去除
 （核心本身与前端无关，Retro-Zero 加载的是同一批 `.so`），核心 package 本体未改动。
 
-### 音乐 / 以太网 / FTP / 中文界面
+### 音乐 / USB 虚拟盘 / 中文界面
 
-- **MP3**：见补丁 0003。传歌方式三种任选：Windows 直接拷进 GAME 盘的
-  `music` 文件夹、FTP、或浏览器上传。
-- **以太网**：板级 DTS 本就启用 `gmac0`（RMII PHY）。内核片段把
-  `stmmac-platform` + `dwmac-rockchip` 改为内建（原为模块，靠 udev 冷插拔，
-  会和 `S40network` 的 ifup 竞争），并启用 Motorcomm/Realtek/IC+ 等常见 PHY
-  驱动作保险。`eth0` 固定为 `192.168.10.1/24`——把电脑设成 `192.168.10.2/24`
-  直连即可。
-- **FTP**：`S45ftpd` 用 `tcpsvd` 把 busybox `ftpd` 挂在 21 端口，根目录
-  `/root`，无认证（任意用户名匿名登录），读/写/上传全部放开。
-  `ftp://192.168.10.1` 即可。
+- **MP3**：见补丁 0003。传歌方式：USB 虚拟盘的 `music` 文件夹，或把 TF 卡
+  插到电脑上直接拷。
+- **USB 虚拟盘**：见补丁 0007。进入菜单项后 GAME 分区以 UMS 形式挂到电脑，
+  全程无需网络。
+- **离线设计**：以太网在设备树层禁用（`&gmac0 status="disabled"`），内核
+  不再编译 stmmac/dwmac-rockchip；系统里没有任何 FTP/SMB/HTTP 服务或监听
+  端口。唯一对外的通路是 OTG 口的 USB（串口控制台 + 虚拟盘）。
 - **Wi-Fi**：板上没有 Wi-Fi 硬件，板级 defconfig 已清除 `RK_WIFIBT`，
   RTL8188EU 模块、固件和 `S36wifibt` 初始化脚本不再编译、不再进固件。
 
@@ -218,14 +224,7 @@ device/rockchip/common/scripts/fetch-toolchain.sh
 ### 来源说明
 
 本树源自瑞芯微 `rk3506_linux6.1_release_v1.2.0`（SDK Release V1.2.0，
-2025-03-10；Linux 6.1.118，U-Boot 2017.09）。最初用 `repo` 工具检出，但
-`.repo` 目录已**丢失**，剩下 43 个悬空的 `.git` 符号链接——各组件的提交历史
-和上游 commit ID 已不可考。
-
-瑞芯微的 manifest 仓库不公开（`redmine.rock-chips.com`，仅合作方），所以没法
-用 submodule 表达：大多数组件没有有效的上游 URL，板级 DTS 和 defconfig 是
-厂商私有的、任何上游仓库里都没有。硬指向上游 commit 只会得到一个编不出来的
-树。因此选择：一份扁平快照。
+2025-03-10；Linux 6.1.118，U-Boot 2017.09）。
 
 #### 不入库的内容
 
@@ -263,14 +262,15 @@ into a handheld console. It is **not** an upstream Rockchip repository and
 | Display | ILI9341 2.8" 320x240 SPI panel, driven by `tinydrm` |
 | Audio | USB sound card (USB Audio Class) |
 | Input | USB OTG: CDC-ACM serial console + USB HID joysticks |
-| Ethernet | gmac0 + RMII PHY, fixed address `192.168.10.1/24` (no Wi-Fi on board) |
+| Network | None. Ethernet is disabled at the device-tree level and no network services exist — a purely offline device; files go in over USB |
 | Storage | TF card, GPT partitions: `oem` / `userdata` / `rootfs` / `data` |
 | Firmware | Retro-Zero front-end (LVGL UI over `/dev/fb0`) + libretro cores |
 
 The debug console runs over a USB gadget at `/dev/ttyGS0` (a COM port on the
-host). Retro-Zero boots straight into its ROM browser, and a supervisor script
-keeps it alive — quitting, restarting, or crashing returns to the browser
-rather than a blank framebuffer.
+host). ROMs and music go in through the **USB virtual disk** on the same OTG
+port (a mass-storage gadget, see below). Retro-Zero boots straight into its
+ROM browser, and a supervisor script keeps it alive — quitting, restarting,
+or crashing returns to the browser rather than a blank framebuffer.
 
 ### What was customized
 
@@ -280,13 +280,12 @@ Only a handful of files differ from the vendor SDK:
 |---|---|
 | `device/rockchip/.chips/rk3506/HZ-RK3506G2_MiniEVM_TF_defconfig` | Board defconfig: selects DTS, kernel fragments, rootfs overlay |
 | `device/rockchip/.chips/rk3506/parameter-EMMC.txt` | Partition table + kernel cmdline (`root=PARTUUID=...`) |
-| `kernel-6.1/arch/arm/boot/dts/HZ-RK3506G2_MiniEVM_TF.dts` | Board DTS: SPI panel, backlight, no SoC sound card |
-| `kernel-6.1/arch/arm/configs/rk3506-game.config` | Kernel fragment: tinydrm, USB audio, VT/logo, gadget serial, built-in Ethernet |
+| `kernel-6.1/arch/arm/boot/dts/HZ-RK3506G2_MiniEVM_TF.dts` | Board DTS: SPI panel (50MHz), backlight, no SoC sound card, gmac0 Ethernet disabled |
+| `kernel-6.1/arch/arm/configs/rk3506-game.config` | Kernel fragment: tinydrm, USB audio, VT/logo, gadget serial + mass storage, Ethernet drivers disabled |
 | `kernel-6.1/arch/arm/configs/rk3506-display.config` | Display fragment |
-| `buildroot/configs/rockchip_rk3506_game_defconfig` | Buildroot: Retro-Zero, cores, mpg123, busybox ftpd fragment |
+| `buildroot/configs/rockchip_rk3506_game_defconfig` | Buildroot: Retro-Zero, cores, mpg123 |
 | `buildroot/package/retro-zero/` | The Retro-Zero frontend package, incl. console integration under `console/` |
-| `buildroot/board/rockchip/rk3506/fs-retrogaming-overlay/` | Board-only overlay: inittab, data-partition init, static IP, FTP service, USB serial, boot audio |
-| `buildroot/board/rockchip/rk3506/busybox-game.fragment` | Extra busybox config: `ftpd` + `tcpsvd` |
+| `buildroot/board/rockchip/rk3506/fs-retrogaming-overlay/` | Board-only overlay: inittab, data-partition init, USB serial, boot audio |
 | `buildroot/package/retroarch/libretro-*/` | Emulator core packages (build flags, download hashes) |
 
 Audio is deliberately USB-only: the original MAX98357A I2S amplifier support
@@ -311,7 +310,7 @@ It is a normal Buildroot package (`buildroot/package/retro-zero/`), with the
 console integration behind `BR2_PACKAGE_RETRO_ZERO_CONSOLE`: `S99retrozero`
 (start at boot) and `retro-zero-forever` (respawn supervisor).
 
-### Four upstream adaptation patches
+### Seven upstream adaptation patches
 
 The patches in `package/retro-zero/` handle everything upstream assumes that
 does not hold here:
@@ -332,10 +331,22 @@ does not hold here:
   tracks, any other key stops, and tracks auto-advance. No decoder is linked
   into the frontend.
 - **`0004-zh-cn-ui-eth-upload.patch`** — localizes the launcher UI to Chinese
-  (menus, settings, prompts, hints; glyphs come from 0002) and reworks the ROM
-  Upload tool for this board: it binds any non-loopback interface instead of
-  Wi-Fi only, uploads land in `/root/roms/<system>`, and the page is reachable
-  at `http://192.168.10.1`.
+  (menus, settings, prompts, hints; glyphs come from 0002). It originally
+  shipped a browser upload tool that depended on Ethernet; superseded by 0007.
+- **`0005-usb-gamepad-support.patch`** — a native gamepad layer: modern Linux
+  gamepad `BTN_*` mapping plus a legacy twin-stick (0810:0001) autoconfig
+  profile, ABS-axis and HAT d-pad handling, direct Libretro joypad mapping
+  in-game, abstract direction/confirm/back consumed by the menu, a hot-plug
+  rescan every second, and SELECT+START to return to the menu. Also carries
+  core-option fixes such as forcing plain DMG mode for GB.
+- **`0006-move-page-dots.patch`** — moves the carousel page dots downward so
+  they no longer overlap the cards.
+- **`0007-usb-virtual-disk.patch`** — reworks the upload tool into a **USB
+  virtual disk**: the menu entry is renamed accordingly; on entry it unmounts
+  `/root/roms`, attaches a `mass_storage.0` function to the g1 composite
+  gadget created by `S40usbserial`, and rebinds the UDC (serial console
+  stays up), so Windows pops up the GAME drive; pressing any key detaches
+  the LUN and remounts the partition. Replaces 0004's network upload scheme.
 
 ### Emulator cores
 
@@ -357,18 +368,17 @@ The vendor gates every core's `Config.in` on `BR2_PACKAGE_RETROARCH`; those
 dependencies are removed because the cores are frontend-agnostic — Retro-Zero
 loads the same `.so` files. The core packages themselves are unchanged.
 
-### Music / Ethernet / FTP / Chinese UI
+### Music / USB virtual disk / Chinese UI
 
-- **MP3**: see patch 0003. Three ways to load songs: copy into the `music`
-  folder of the GAME drive from Windows, FTP, or the browser upload page.
-- **Ethernet**: the board DTS already enables `gmac0` (RMII PHY). The kernel
-  fragment bakes `stmmac-platform` + `dwmac-rockchip` in (as modules they
-  raced `S40network`'s ifup on udev coldplug) and enables the common PHY
-  drivers (Motorcomm, Realtek, IC+, …) as insurance. `eth0` comes up as
-  `192.168.10.1/24` — set a PC to e.g. `192.168.10.2/24` and plug in a cable.
-- **FTP**: `S45ftpd` serves busybox `ftpd` through `tcpsvd` on port 21, rooted
-  at `/root`, with no authentication (any login is accepted) and read/write/
-  upload enabled. Point a client at `ftp://192.168.10.1`.
+- **MP3**: see patch 0003. Two ways to load songs: the `music` folder of the
+  USB virtual disk, or popping the TF card into a PC.
+- **USB virtual disk**: see patch 0007. Selecting the menu entry exposes the
+  GAME partition over USB mass storage — no network involved.
+- **Offline by design**: Ethernet is disabled at the device-tree level
+  (`&gmac0 status = "disabled"`) and the kernel no longer builds
+  stmmac/dwmac-rockchip; there are no FTP/SMB/HTTP services or listening
+  ports anywhere on the system. The only paths to the outside are the OTG
+  port's USB functions (serial console + mass storage).
 - **Wi-Fi**: there is no Wi-Fi hardware, so the board defconfig clears
   `RK_WIFIBT`; the RTL8188EU module, its firmware and the `S36wifibt` init
   script are neither built nor shipped.
@@ -482,16 +492,7 @@ device/rockchip/common/scripts/fetch-toolchain.sh
 <a id="provenance-1"></a>
 
 The tree descends from Rockchip's `rk3506_linux6.1_release_v1.2.0` (SDK
-Release V1.2.0, 2025-03-10; Linux 6.1.118, U-Boot 2017.09). The original
-checkout was made with the `repo` tool, but its `.repo` directory is **gone**,
-leaving 43 dangling `.git` symlinks — per-component history and upstream
-commit IDs are unrecoverable.
-
-Rockchip's manifest repository is not public (`redmine.rock-chips.com`,
-partner access only), so this cannot be expressed as submodules: no valid
-upstream URLs exist for most components, and the board DTS and defconfig are
-vendor-private, appearing in no upstream repository. Pointing at upstream
-commits would produce a tree that does not build. Hence: one flat snapshot.
+Release V1.2.0, 2025-03-10; Linux 6.1.118, U-Boot 2017.09).
 
 #### Not tracked
 

@@ -1,0 +1,314 @@
+--- a/src/Core/core_registry.cpp	2026-09-13 22:59:47.031739526 +0800
++++ b/src/Core/core_registry.cpp	2026-09-13 22:57:58.283821978 +0800
+@@ -98,7 +98,7 @@
+             "", false, false
+         },
+         {
+-            "", "上传", "上传", "CP0_TOOL_ROM_UPLOAD",
++            "", "USB虚拟盘", "USB虚拟盘", "CP0_TOOL_ROM_UPLOAD",
+             "", "",
+             {},
+             0x58C7FF, false,
+--- a/src/UI/app_ui.cpp	2026-09-13 22:59:47.042572855 +0800
++++ b/src/UI/app_ui.cpp	2026-09-13 22:58:26.916312552 +0800
+@@ -12,9 +12,9 @@
+ #include "rom_browser.h"
+ #include "gamepad_translate.h"
+ #include "music_player.h"
++#include "../Upload/usb_disk_gadget.h"
+ #include "../Core/core_registry.h"
+ #include "../Core/core_downloader.h"
+-#include "../Upload/rom_upload_server.h"
+ #include "console_art_renderer.h"
+ #include "../Utils/file_utils.h"
+ #include "../Utils/bios_utils.h"
+@@ -300,15 +300,14 @@
+ 
+ void launch_rom_upload_tool()
+ {
+-    UploadServer::StartResult result = UploadServer::start(g_consoles);
+-    if (!result.ok) {
+-        const std::string title = result.error.find("Wi-Fi") != std::string::npos ?
+-            "网络未连接" : "上传服务启动失败";
+-        show_error_overlay(title, result.error);
++    std::string error;
++    if (!UsbDiskGadget::activate(error)) {
++        show_error_overlay("USB虚拟盘启动失败", error);
+         return;
+     }
+ 
+-    show_success_overlay("上传就绪", result.message);
++    show_success_overlay("USB虚拟盘已连接",
++                         "电脑上会出现一个 GAME 磁盘，\n复制 ROM 后按任意键断开并返回。");
+ }
+ 
+ 
+@@ -437,8 +436,6 @@
+ {
+     dismiss_error_overlay();
+ 
+-    const bool is_rom_upload_ready = (title == "上传就绪");
+-
+     g_error_overlay = lv_obj_create(g_root);
+     lv_obj_set_size(g_error_overlay, 308, 106);
+     lv_obj_set_pos(g_error_overlay, 6, 58);
+@@ -456,38 +453,7 @@
+     lv_obj_set_style_text_color(etitle, lv_color_hex(0x7BE58A), LV_PART_MAIN | LV_STATE_DEFAULT);
+     lv_obj_set_style_text_font(etitle, cjk_font_12, LV_PART_MAIN | LV_STATE_DEFAULT);
+ 
+-    if (is_rom_upload_ready) {
+-        const size_t first_nl = body.find('\n');
+-        const size_t second_nl = (first_nl == std::string::npos) ? std::string::npos : body.find('\n', first_nl + 1);
+-
+-        const std::string intro = (first_nl == std::string::npos) ? body : body.substr(0, first_nl);
+-        const std::string addr = (first_nl == std::string::npos)
+-            ? std::string()
+-            : body.substr(first_nl + 1, second_nl == std::string::npos ? std::string::npos : second_nl - first_nl - 1);
+-        const std::string rest = (second_nl == std::string::npos) ? std::string() : body.substr(second_nl + 1);
+-
+-        lv_obj_t *intro_lbl = lv_label_create(g_error_overlay);
+-        lv_label_set_text(intro_lbl, intro.c_str());
+-        lv_obj_set_width(intro_lbl, 288);
+-        lv_obj_align(intro_lbl, LV_ALIGN_TOP_LEFT, 0, 24);
+-        lv_obj_set_style_text_color(intro_lbl, lv_color_hex(0xD0E8D2), LV_PART_MAIN | LV_STATE_DEFAULT);
+-        lv_obj_set_style_text_font(intro_lbl, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+-
+-        lv_obj_t *addr_lbl = lv_label_create(g_error_overlay);
+-        lv_label_set_text(addr_lbl, addr.c_str());
+-        lv_obj_set_width(addr_lbl, 288);
+-        lv_obj_align(addr_lbl, LV_ALIGN_TOP_LEFT, 0, 38);
+-        lv_obj_set_style_text_color(addr_lbl, lv_color_hex(0xF0FFF2), LV_PART_MAIN | LV_STATE_DEFAULT);
+-        lv_obj_set_style_text_font(addr_lbl, cjk_font_12, LV_PART_MAIN | LV_STATE_DEFAULT);
+-
+-        lv_obj_t *rest_lbl = lv_label_create(g_error_overlay);
+-        lv_label_set_text(rest_lbl, rest.c_str());
+-        lv_label_set_long_mode(rest_lbl, LV_LABEL_LONG_WRAP);
+-        lv_obj_set_width(rest_lbl, 288);
+-        lv_obj_align(rest_lbl, LV_ALIGN_TOP_LEFT, 0, 46);
+-        lv_obj_set_style_text_color(rest_lbl, lv_color_hex(0xD0E8D2), LV_PART_MAIN | LV_STATE_DEFAULT);
+-        lv_obj_set_style_text_font(rest_lbl, cjk_font_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+-    } else {
++    {
+         lv_obj_t *emsg = lv_label_create(g_error_overlay);
+         lv_label_set_text(emsg, body.c_str());
+         lv_label_set_long_mode(emsg, LV_LABEL_LONG_WRAP);
+@@ -1495,6 +1461,10 @@
+     }
+ 
+     if (g_error_overlay) {
++        if (UsbDiskGadget::active()) {
++            std::string err;
++            UsbDiskGadget::deactivate(err);
++        }
+         dismiss_error_overlay();
+         return;
+     }
+--- a/src/Upload/usb_disk_gadget.cpp	1970-01-01 08:00:00.000000000 +0800
++++ b/src/Upload/usb_disk_gadget.cpp	2026-09-13 23:11:59.320762476 +0800
+@@ -0,0 +1,179 @@
++#include "usb_disk_gadget.h"
++
++#include <cstdlib>
++#include <cstring>
++#include <dirent.h>
++#include <fstream>
++#include <string>
++#include <sys/stat.h>
++
++namespace {
++
++const char *kGadget = "/sys/kernel/config/usb_gadget/g1";
++const char *kMountPoint = "/root/roms";
++
++int run(const std::string &cmd)
++{
++    return std::system(cmd.c_str());
++}
++
++bool file_exists(const std::string &path)
++{
++    struct stat st;
++    return ::stat(path.c_str(), &st) == 0;
++}
++
++bool write_sysfs(const std::string &path, const std::string &value)
++{
++    std::ofstream f(path, std::ios::trunc);
++    if (!f.is_open())
++        return false;
++    f << value;
++    return f.good();
++}
++
++std::string read_first_udc()
++{
++    DIR *d = opendir("/sys/class/udc");
++    if (!d)
++        return std::string();
++    std::string name;
++    struct dirent *e;
++    while ((e = readdir(d)) != nullptr) {
++        if (e->d_name[0] == '.')
++            continue;
++        name = e->d_name;
++        break;
++    }
++    closedir(d);
++    return name;
++}
++
++// Same partition S20data mounts at /root/roms: the one whose uevent
++// advertises PARTNAME=data.
++bool find_data_partition(std::string &dev)
++{
++    DIR *d = opendir("/sys/block");
++    if (!d)
++        return false;
++    bool found = false;
++    struct dirent *disk;
++    while (!found && (disk = readdir(d)) != nullptr) {
++        if (strncmp(disk->d_name, "mmcblk", 6) != 0)
++            continue;
++        std::string base = std::string("/sys/block/") + disk->d_name;
++        DIR *pd = opendir(base.c_str());
++        if (!pd)
++            continue;
++        struct dirent *part;
++        while ((part = readdir(pd)) != nullptr) {
++            if (strncmp(part->d_name, disk->d_name, strlen(disk->d_name)) != 0)
++                continue;
++            std::string uevent = base + "/" + part->d_name + "/uevent";
++            std::ifstream f(uevent.c_str());
++            std::string line;
++            while (std::getline(f, line)) {
++                if (line.rfind("PARTNAME=data", 0) == 0) {
++                    dev = std::string("/dev/") + part->d_name;
++                    found = true;
++                    break;
++                }
++            }
++            if (found)
++                break;
++        }
++        closedir(pd);
++    }
++    closedir(d);
++    return found;
++}
++
++bool is_mounted()
++{
++    std::ifstream f("/proc/mounts");
++    std::string line;
++    while (std::getline(f, line)) {
++        if (line.find(kMountPoint) != std::string::npos &&
++            line.find(' ' + std::string(kMountPoint) + ' ') != std::string::npos)
++            return true;
++    }
++    return false;
++}
++
++void rebind_udc(const std::string &udc)
++{
++    if (!udc.empty())
++        write_sysfs(std::string(kGadget) + "/UDC", udc + "\n");
++}
++
++} // namespace
++
++namespace UsbDiskGadget {
++
++bool active()
++{
++    return file_exists(std::string(kGadget) + "/functions/mass_storage.0");
++}
++
++bool activate(std::string &error)
++{
++    if (active())
++        return true;
++
++    if (!file_exists(kGadget)) {
++        error = "USB gadget 未就绪";
++        return false;
++    }
++    std::string udc = read_first_udc();
++    if (udc.empty()) {
++        error = "未找到 USB 设备控制器";
++        return false;
++    }
++    std::string dev;
++    if (!find_data_partition(dev)) {
++        error = "未找到游戏数据分区";
++        return false;
++    }
++    if (is_mounted() && run(std::string("umount ") + kMountPoint) != 0) {
++        error = "数据分区正被占用，无法导出";
++        return false;
++    }
++
++    std::string G = kGadget;
++    // Drop the host connection while the composite config changes.
++    run(std::string("echo '' > ") + G + "/UDC");
++    run("mkdir -p " + G + "/functions/mass_storage.0");
++    if (!write_sysfs(G + "/functions/mass_storage.0/lun.0/file", dev + "\n")) {
++        error = "无法挂载存储 LUN";
++        return false;
++    }
++    write_sysfs(G + "/functions/mass_storage.0/lun.0/removable", "1\n");
++    run("rm -f " + G + "/configs/c.1/mass_storage.0");
++    run("ln -s " + G + "/functions/mass_storage.0 " + G + "/configs/c.1/mass_storage.0");
++    write_sysfs(G + "/strings/0x409/product", "RK3506 USB Disk\n");
++    rebind_udc(udc);
++    return true;
++}
++
++bool deactivate(std::string &error)
++{
++    (void)error;
++    std::string G = kGadget;
++    if (active()) {
++        run(std::string("echo '' > ") + G + "/UDC");
++        run("sleep 0.3"); // let the host release the LUN before the file goes away
++        run("rm -f " + G + "/configs/c.1/mass_storage.0");
++        run("rmdir " + G + "/functions/mass_storage.0");
++        write_sysfs(G + "/strings/0x409/product", "RK3506 Virtual Serial\n");
++        rebind_udc(read_first_udc());
++    }
++    // Make ROMs visible in the menu again.
++    if (!is_mounted()) {
++        std::string dev;
++        if (find_data_partition(dev))
++            run(std::string("mkdir -p ") + kMountPoint + " && mount -t vfat " + dev + " " + kMountPoint);
++    }
++    return true;
++}
++
++} // namespace UsbDiskGadget
+--- a/src/Upload/usb_disk_gadget.h	1970-01-01 08:00:00.000000000 +0800
++++ b/src/Upload/usb_disk_gadget.h	2026-09-13 22:55:53.593824694 +0800
+@@ -0,0 +1,24 @@
++#ifndef CP0_USB_DISK_GADGET_H
++#define CP0_USB_DISK_GADGET_H
++
++#include <string>
++
++// Exposes the GAME data partition as a USB mass-storage LUN on the OTG port.
++// The g1 composite gadget (set up by S40usbserial) keeps its ttyGS0 ACM
++// function; this only adds/removes a mass_storage function and rebinds the UDC.
++namespace UsbDiskGadget {
++
++// umounts /root/roms, then adds the mass_storage function and rebinds.
++// Returns false with a user-presentable message in error.
++bool activate(std::string &error);
++
++// unbinds the LUN and mounts the partition back at /root/roms. Best effort;
++// always leaves the serial gadget bound.
++bool deactivate(std::string &error);
++
++// true while the mass_storage function exists in the gadget.
++bool active();
++
++} // namespace UsbDiskGadget
++
++#endif // CP0_USB_DISK_GADGET_H

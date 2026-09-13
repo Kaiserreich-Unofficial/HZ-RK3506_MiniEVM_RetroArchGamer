@@ -28,9 +28,9 @@ BR2_PACKAGE_UTIL_LINUX_LIBUUID=y
 # --- input debug ---
 BR2_PACKAGE_EVTEST=y
 BR2_PACKAGE_IPROUTE2=y
-# --- ethernet + file transfer: board is reachable at fixed 192.168.10.1;
-# S45ftpd serves /root over anonymous FTP (busybox ftpd via tcpsvd) ---
-BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES="board/rockchip/common/base/busybox.fragment board/rockchip/rk3506/busybox-game.fragment"
+# No network file transfer: Ethernet is disabled at the DTS level and there
+# are no FTP/SMB/HTTP services. ROMs/music go in over the USB mass-storage
+# gadget (Retro-Zero menu: "USB虚拟盘") or by popping the TF card into a PC.
 # MP3 playback for the Retro-Zero Music card (music_player spawns its CLI)
 BR2_PACKAGE_MPG123=y
 # --- retroarch: KMS/DRM software video driver (RK3506 has no GPU) ---

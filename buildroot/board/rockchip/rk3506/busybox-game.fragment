@@ -1,9 +1,0 @@
-# Guest FTP server for the game firmware (started by S45ftpd):
-# ftpd built without authentication = anonymous access under ftpd's UID,
-# and S45ftpd runs it as root, so guest gets read/write/upload on /root.
-CONFIG_FTPD=y
-CONFIG_FEATURE_FTPD_WRITE=y
-# Windows Explorer sends a nonconforming LIST; tolerate it
-CONFIG_FEATURE_FTPD_ACCEPT_BROKEN_LIST=y
-# inetd-style supervisor so ftpd serves more than one connection
-CONFIG_TCPSVD=y

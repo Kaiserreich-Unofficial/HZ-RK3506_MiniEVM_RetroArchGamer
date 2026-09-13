@@ -4,6 +4,10 @@ RK_ROOTFS_INSTALL_MODULES=y
 # No Wi-Fi/BT hardware on this board: skip rkwifibt modules, firmware and
 # the S36wifibt init script entirely (networking is Ethernet @192.168.10.1)
 # RK_WIFIBT is not set
+# The sources.buildroot.net probe misfires behind a proxy and aborts the
+# build even when every download would succeed; sources are cached in dl/
+# anyway.
+# RK_NETWORK_CHECK is not set
 #RK_WIFIBT_CHIP="RTL8188EU"
 #RK_WIFIBT_CHIP="AP6256"
 # RK_ROOTFS_LOG_GUARDIAN is not set

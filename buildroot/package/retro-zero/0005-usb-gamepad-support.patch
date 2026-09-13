@@ -36,7 +36,22 @@ diff -ruN a/src/Core/libretro_core.cpp b/src/Core/libretro_core.cpp
  #include "core_registry.h"
  #include "../Utils/bios_utils.h"
  #include "../Utils/file_utils.h"
-@@ -270,6 +272,30 @@
+@@ -68,6 +70,14 @@
+ {
+     g_core_option_overrides.clear();
+ 
++    // mgba renders every other frame: at 60 emulated fps the SPI panel push
++    // (~24 ms per frame at 50 MHz, wire-bound regardless of DMA) cannot keep
++    // up and emulation falls behind the core clock. A steady 30 fps of
++    // display updates lets the emulation itself run at full speed.
++    if (env_core && std::strcmp(env_core, "CP0_CORE_GBA") == 0) {
++        set_core_option_override("mgba_frameskip", "1");
++    }
++
+     // Gearboy's "Auto" model can enable Super Game Boy presentation for
+     // SGB-aware GB games. The GB launcher always wants plain DMG mode.
+     if (env_core && std::strcmp(env_core, "CP0_CORE_GB") == 0) {
+@@ -270,6 +280,30 @@
          return false;
      }
  
