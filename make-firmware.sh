@@ -91,9 +91,12 @@ BUILD_START=$(date +%s)
 
 # build.sh can exit 0 even when a build hook aborted (its error trap does not
 # always propagate), and a stale output/update/Image/update.img would then be
-# copied as if it were new. Judge success by the log and image freshness.
+# copied as if it were new. Judge success by the final SDK stage marker and
+# image freshness; absence of ERROR lines is not a criterion because a build
+# killed mid-run leaves orphans that keep appending to the log and can inject
+# stale ERROR lines into a later successful run.
 build_ok() {
-	! grep -q "^ERROR" "$LOG" && [ -s "$OUT_IMG" ] &&
+	grep -aq "build_all succeeded" "$LOG" && [ -s "$OUT_IMG" ] &&
 		[ "$(stat -c%Y "$OUT_IMG")" -ge "$BUILD_START" ]
 }
 

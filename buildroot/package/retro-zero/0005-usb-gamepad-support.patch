@@ -1,0 +1,742 @@
+diff -ruN a/src/Audio/alsa_audio.cpp b/src/Audio/alsa_audio.cpp
+--- a/src/Audio/alsa_audio.cpp	
++++ b/src/Audio/alsa_audio.cpp	
+@@ -351,6 +351,13 @@
+         return 0;
+     }
+ 
++    // No output device (audio disabled): swallow the batch. Without this,
++    // convert_frames would run with channels_ == 0, resize the output
++    // vector to zero and then write through its null data pointer.
++    if (channels_ == 0 || rate_ == 0) {
++        return 0;
++    }
++
+     const bool direct_stereo =
+         input_rate_ == rate_ && channels_ == 2 && gain_ >= 0.999 && gain_ <= 1.001;
+     const int16_t *output_data = data;
+@@ -430,6 +437,10 @@
+ 
+ size_t AlsaAudio::convert_frames(const int16_t *data, size_t frames, std::vector<int16_t> &output)
+ {
++    if (channels_ == 0 || rate_ == 0) {
++        return 0;
++    }
++
+     double step = 1.0;
+     size_t output_frames = frames;
+     if (input_rate_ > 0 && rate_ > 0 && input_rate_ != rate_) {
+diff -ruN a/src/Core/libretro_core.cpp b/src/Core/libretro_core.cpp
+--- a/src/Core/libretro_core.cpp	
++++ b/src/Core/libretro_core.cpp	
+@@ -1,4 +1,6 @@
+ #include "libretro_core.h"
++
++#include <fstream>
+ #include "core_registry.h"
+ #include "../Utils/bios_utils.h"
+ #include "../Utils/file_utils.h"
+@@ -270,6 +272,30 @@
+         return false;
+     }
+ 
++    // Print the load base of every mapped module (exe + core .so). The
++    // kernel oops on a segfault reports a runtime PC; subtracting the base
++    // gives the static offset for addr2line/nm.
++    {
++        std::ifstream maps("/proc/self/maps");
++        std::string line;
++        while (std::getline(maps, line)) {
++            if (line.find("retro-zero") != std::string::npos ||
++                line.find("libretro.so") != std::string::npos ||
++                line.find("mgba") != std::string::npos) {
++                std::cout << "module: " << line << "\n";
++                break; // one line per module is enough (r-x first hit)
++            }
++        }
++        // exe base separately (the break above may have caught the core)
++        std::ifstream maps2("/proc/self/maps");
++        while (std::getline(maps2, line)) {
++            if (line.find("/usr/bin/retro-zero") != std::string::npos) {
++                std::cout << "module: " << line << "\n";
++                break;
++            }
++        }
++    }
++
+     const bool ok =
+         load_symbol(handle, "retro_init", retro_init) &&
+         load_symbol(handle, "retro_deinit", retro_deinit) &&
+diff -ruN a/src/Input/evdev_input.cpp b/src/Input/evdev_input.cpp
+--- a/src/Input/evdev_input.cpp	
++++ b/src/Input/evdev_input.cpp	
+@@ -1,5 +1,7 @@
+ #include "evdev_input.h"
+ 
++#include "../UI/gamepad_translate.h"
++
+ #include <fcntl.h>
+ #include <linux/input.h>
+ #include <unistd.h>
+@@ -243,99 +245,134 @@
+     constexpr uint64_t kBrightnessInitialDelayMs = 260;
+     constexpr uint64_t kBrightnessRepeatMs = 60;
+ 
+-    input_event ev {};
+-    for (int fd : fds_) {
+-        while (read(fd, &ev, sizeof(ev)) == sizeof(ev)) {
+-            if (ev.type != EV_KEY) {
+-                continue;
+-            }
++    // One EV_KEY event, already gamepad-translated.
++    auto handle_evkey = [&](const input_event &kev) {
++        const uint64_t now_ms = monotonic_ms();
++        handle_keyboard_event(kev.code, kev.value);
+ 
+-            const uint64_t now_ms = monotonic_ms();
+-            handle_keyboard_event(ev.code, ev.value);
++        if ((kev.code == KEY_Q || kev.code == KEY_ESC) && kev.value != 0) {
++            quit_ = true;
++        }
+ 
+-            if ((ev.code == KEY_Q || ev.code == KEY_ESC) && ev.value != 0) {
+-                quit_ = true;
+-            }
++        int id = -1;
++        if (static_cast<size_t>(kev.code) < key_to_joypad_.size()) {
++            id = key_to_joypad_[static_cast<size_t>(kev.code)];
++        }
++        if (id == RETRO_DEVICE_ID_JOYPAD_L && two_button_mode_) {
++            id = RETRO_DEVICE_ID_JOYPAD_A;
++        }
+ 
+-            int id = -1;
+-            if (static_cast<size_t>(ev.code) < key_to_joypad_.size()) {
+-                id = key_to_joypad_[static_cast<size_t>(ev.code)];
++        int analog_id = -1;
++        if (static_cast<size_t>(kev.code) < key_to_left_analog_.size()) {
++            analog_id = key_to_left_analog_[static_cast<size_t>(kev.code)];
++        }
++
++        const bool mapped_to_core =
++            (id >= 0 && static_cast<size_t>(id) < joypad_.size()) ||
++            (analog_id >= 0 && static_cast<size_t>(analog_id) < left_analog_.size());
++        if (mapped_to_core) {
++            if (id >= 0 && static_cast<size_t>(id) < joypad_.size()) {
++                joypad_[id] = kev.value != 0;
+             }
+-            if (id == RETRO_DEVICE_ID_JOYPAD_L && two_button_mode_) {
+-                id = RETRO_DEVICE_ID_JOYPAD_A;
++            if (analog_id >= 0 && static_cast<size_t>(analog_id) < left_analog_.size()) {
++                left_analog_[analog_id] = kev.value != 0;
+             }
++            return;
++        }
+ 
+-            int analog_id = -1;
+-            if (static_cast<size_t>(ev.code) < key_to_left_analog_.size()) {
+-                analog_id = key_to_left_analog_[static_cast<size_t>(ev.code)];
++        // Cardputer FN+F/FN+X are exposed as KEY_UP/KEY_DOWN.
++        // E = volume up, R = volume down (in plus of FN+arrows)
++        if (kev.code == KEY_UP || kev.code == KEY_E) {
++            if (kev.value == 1 || kev.value == 2) {
++                ++volume_steps_;
++                volume_up_held_ = true;
++                volume_up_next_repeat_ms_ = now_ms +
++                    (kev.value == 1 ? kVolumeInitialDelayMs : kVolumeRepeatMs);
++            } else if (kev.value == 0) {
++                volume_up_held_ = false;
+             }
+-
+-            const bool mapped_to_core =
+-                (id >= 0 && static_cast<size_t>(id) < joypad_.size()) ||
+-                (analog_id >= 0 && static_cast<size_t>(analog_id) < left_analog_.size());
+-            if (mapped_to_core) {
+-                if (id >= 0 && static_cast<size_t>(id) < joypad_.size()) {
+-                    joypad_[id] = ev.value != 0;
+-                }
+-                if (analog_id >= 0 && static_cast<size_t>(analog_id) < left_analog_.size()) {
+-                    left_analog_[analog_id] = ev.value != 0;
+-                }
+-                continue;
++            return;
++        }
++        if (kev.code == KEY_DOWN || kev.code == KEY_R) {
++            if (kev.value == 1 || kev.value == 2) {
++                --volume_steps_;
++                volume_down_held_ = true;
++                volume_down_next_repeat_ms_ = now_ms +
++                    (kev.value == 1 ? kVolumeInitialDelayMs : kVolumeRepeatMs);
++            } else if (kev.value == 0) {
++                volume_down_held_ = false;
+             }
+-
+-            // Cardputer FN+F/FN+X are exposed as KEY_UP/KEY_DOWN.
+-            // E = volume up, R = volume down (in plus of FN+arrows)
+-            if (ev.code == KEY_UP || ev.code == KEY_E) {
+-                if (ev.value == 1 || ev.value == 2) {
+-                    ++volume_steps_;
+-                    volume_up_held_ = true;
+-                    volume_up_next_repeat_ms_ = now_ms +
+-                        (ev.value == 1 ? kVolumeInitialDelayMs : kVolumeRepeatMs);
+-                } else if (ev.value == 0) {
+-                    volume_up_held_ = false;
+-                }
+-                continue;
++            return;
++        }
++        if (kev.code == KEY_RIGHT) {
++            if (kev.value == 1 || kev.value == 2) {
++                ++brightness_steps_;
++                brightness_right_held_ = true;
++                brightness_right_next_repeat_ms_ = now_ms +
++                    (kev.value == 1 ? kBrightnessInitialDelayMs : kBrightnessRepeatMs);
++            } else if (kev.value == 0) {
++                brightness_right_held_ = false;
+             }
+-            if (ev.code == KEY_DOWN || ev.code == KEY_R) {
+-                if (ev.value == 1 || ev.value == 2) {
+-                    --volume_steps_;
+-                    volume_down_held_ = true;
+-                    volume_down_next_repeat_ms_ = now_ms +
+-                        (ev.value == 1 ? kVolumeInitialDelayMs : kVolumeRepeatMs);
+-                } else if (ev.value == 0) {
+-                    volume_down_held_ = false;
+-                }
+-                continue;
++            return;
++        }
++        if (kev.code == KEY_LEFT) {
++            if (kev.value == 1 || kev.value == 2) {
++                --brightness_steps_;
++                brightness_left_held_ = true;
++                brightness_left_next_repeat_ms_ = now_ms +
++                    (kev.value == 1 ? kBrightnessInitialDelayMs : kBrightnessRepeatMs);
++            } else if (kev.value == 0) {
++                brightness_left_held_ = false;
+             }
+-            if (ev.code == KEY_RIGHT) {
+-                if (ev.value == 1 || ev.value == 2) {
+-                    ++brightness_steps_;
+-                    brightness_right_held_ = true;
+-                    brightness_right_next_repeat_ms_ = now_ms +
+-                        (ev.value == 1 ? kBrightnessInitialDelayMs : kBrightnessRepeatMs);
+-                } else if (ev.value == 0) {
+-                    brightness_right_held_ = false;
+-                }
+-                continue;
++            return;
++        }
++        if (kev.code == KEY_TAB) {
++            if (kev.value == 1) {
++                ++return_to_ui_requests_;
+             }
+-            if (ev.code == KEY_LEFT) {
+-                if (ev.value == 1 || ev.value == 2) {
+-                    --brightness_steps_;
+-                    brightness_left_held_ = true;
+-                    brightness_left_next_repeat_ms_ = now_ms +
+-                        (ev.value == 1 ? kBrightnessInitialDelayMs : kBrightnessRepeatMs);
+-                } else if (ev.value == 0) {
+-                    brightness_left_held_ = false;
++        }
++    };
++
++    input_event ev {};
++    for (int fd : fds_) {
++        while (read(fd, &ev, sizeof(ev)) == sizeof(ev)) {
++            // Native gamepad path (RetroArch-style): pad buttons map straight
++            // onto Libretro joypad ids, D-pad axes drive the dpad states (and
++            // mirror onto the virtual left stick, like the key bindings do).
++            if (ev.type == EV_ABS) {
++                GamepadTranslate::DirChange ch[2];
++                const int nch = GamepadTranslate::abs_update(ev.code, ev.value, ch);
++                for (int i = 0; i < nch; ++i) {
++                    joypad_[ch[i].joypad_id] = ch[i].pressed;
++                    left_analog_[ch[i].joypad_id] = ch[i].pressed;
+                 }
+                 continue;
+             }
+-            if (ev.code == KEY_TAB) {
+-                if (ev.value == 1) {
+-                    ++return_to_ui_requests_;
++            if (ev.type == EV_KEY) {
++                const int btn_id = GamepadTranslate::btn_to_joypad(ev.code);
++                if (btn_id >= 0) {
++                    int id = btn_id;
++                    if (id == RETRO_DEVICE_ID_JOYPAD_L && two_button_mode_) {
++                        id = RETRO_DEVICE_ID_JOYPAD_A;
++                    }
++                    joypad_[id] = ev.value != 0;
++
++                    // SELECT+START held together: standard handheld hotkey,
++                    // exits the game back to the launcher menu.
++                    const bool combo =
++                        joypad_[RETRO_DEVICE_ID_JOYPAD_SELECT] &&
++                        joypad_[RETRO_DEVICE_ID_JOYPAD_START];
++                    if (combo && !hotkey_latched_) {
++                        ++return_to_ui_requests_;
++                        hotkey_latched_ = true;
++                    } else if (!combo) {
++                        hotkey_latched_ = false;
++                    }
++                    continue;
+                 }
+-                continue;
+             }
+ 
++            handle_evkey(ev);
+         }
+     }
+ 
+diff -ruN a/src/Input/evdev_input.h b/src/Input/evdev_input.h
+--- a/src/Input/evdev_input.h	
++++ b/src/Input/evdev_input.h	
+@@ -57,6 +57,7 @@
+     bool keyboard_enabled_ = false;
+     void (*keyboard_event_callback_)(bool, unsigned, uint32_t, uint16_t) = nullptr;
+     bool two_button_mode_ = false;
++    bool hotkey_latched_ = false;
+     bool trigger_alias_mode_ = false;
+     bool quit_ = false;
+     int volume_steps_ = 0;
+diff -ruN a/src/UI/app_ui.cpp b/src/UI/app_ui.cpp
+--- a/src/UI/app_ui.cpp	
++++ b/src/UI/app_ui.cpp	
+@@ -10,6 +10,7 @@
+ #include "app_settings.h"
+ #include "launch_controls_view.h"
+ #include "rom_browser.h"
++#include "gamepad_translate.h"
+ #include "music_player.h"
+ #include "../Core/core_registry.h"
+ #include "../Core/core_downloader.h"
+@@ -19,11 +20,13 @@
+ #include "../Utils/bios_utils.h"
+ 
+ #include <linux/input.h>
++#include <fcntl.h>
+ #include <unistd.h>
+ 
+ #include <algorithm>
+ #include <array>
+ #include <cctype>
++#include <cerrno>
+ #include <cstdio>
+ #include <cstdlib>
+ #include <cstring>
+@@ -93,7 +96,21 @@
+ std::string g_selected_core;
+ std::string g_selected_rom;
+ std::vector<FileEntry> g_files;
+-std::vector<int> g_input_fds;
++// One fd per /dev/input/eventN slot; -1 = not open. Reopened by the
++// periodic rescan so devices plugged in after startup (or after a USB
++// hiccup) are picked up without restarting the frontend.
++std::array<int, 32> g_input_fd {};
++
++void rescan_input_devices()
++{
++    for (int i = 0; i < 32; ++i) {
++        if (g_input_fd[i] >= 0) continue;
++        char path[64];
++        snprintf(path, sizeof(path), "/dev/input/event%d", i);
++        const int fd = open(path, O_RDONLY | O_NONBLOCK);
++        if (fd >= 0) g_input_fd[i] = fd;
++    }
++}
+ 
+ lv_obj_t *g_root = nullptr;
+ lv_obj_t *g_time_label = nullptr;
+@@ -494,7 +511,8 @@
+     const int step_us = 10000;
+     input_event ev {};
+     while (g_running) {
+-        for (int fd : g_input_fds) {
++        for (int fd : g_input_fd) {
++            if (fd < 0) continue;
+             while (read(fd, &ev, sizeof(ev)) == sizeof(ev)) {
+                 if (ev.type == EV_KEY && ev.code <= KEY_MAX && (ev.value == 1 || ev.value == 2)) {
+                     return;
+@@ -1310,10 +1328,12 @@
+     case KEY_1: return KEY_ENTER;
+     case KEY_2:
+     case KEY_BACKSPACE: return KEY_BACKSPACE;
+-    case KEY_LEFT:
+-    case KEY_RIGHT:
+-    case KEY_UP:
+-    case KEY_DOWN: return -1;
++    // Physical arrow keys (USB keyboard, or gamepad D-pad before the
++    // bridge rewrites it) navigate like Z/C/F/X instead of being ignored.
++    case KEY_LEFT: return KEY_LEFT;
++    case KEY_RIGHT: return KEY_RIGHT;
++    case KEY_UP: return KEY_UP;
++    case KEY_DOWN: return KEY_DOWN;
+     default: return static_cast<int>(code);
+     }
+ }
+@@ -1654,7 +1674,7 @@
+             g_filter.pop_back();
+             reload_files_keep_top();
+         }
+-    } else if (code == KEY_ENTER && raw_code != KEY_J && raw_code != KEY_K) {
++    } else if (code == KEY_ENTER) {
+         if (g_files.empty()) return;
+         FileEntry entry = g_files[g_file_index];
+         if (entry.dir) {
+@@ -1715,34 +1735,106 @@
+         }
+     };
+ 
+-    input_event ev {};
+-    for (int fd : g_input_fds) {
+-        while (read(fd, &ev, sizeof(ev)) == sizeof(ev)) {
+-            if (ev.type != EV_KEY || ev.code > KEY_MAX) continue;
++    // One EV_KEY event, already gamepad-translated. Returns true when the
++    // UI asked to stop (launch or quit).
++    auto handle_evkey = [&](const input_event &kev) {
++        if (kev.code > KEY_MAX) return false;
+ 
+-            if (ev.value == 0) {
+-                if (is_nav_repeat_key(ev.code)) g_nav_key_down[ev.code] = 0;
+-                continue;
+-            }
++        if (kev.value == 0) {
++            if (is_nav_repeat_key(kev.code)) g_nav_key_down[kev.code] = 0;
++            return false;
++        }
+ 
+-            if (ev.value == 1) {
+-                handle_key(ev.code);
+-                if (is_nav_repeat_key(ev.code)) {
+-                    g_nav_key_down[ev.code] = 1;
+-                    g_nav_key_next_ms[ev.code] = lv_tick_get() + kNavHoldDelayMs;
+-                }
+-                if (!g_running || g_launching) {
+-                    return;
++        if (kev.value == 1) {
++            handle_key(kev.code);
++            if (is_nav_repeat_key(kev.code)) {
++                g_nav_key_down[kev.code] = 1;
++                g_nav_key_next_ms[kev.code] = lv_tick_get() + kNavHoldDelayMs;
++            }
++            return !g_running || g_launching;
++        }
++
++        if (kev.value == 2 && !is_nav_repeat_key(kev.code)) {
++            handle_key(kev.code);
++            return !g_running || g_launching;
++        }
++
++        return false;
++    };
++
++    // Gamepad dpad -> menu navigation, mirroring the keyboard hold-repeat.
++    auto pad_dpad = [&](int joypad_id, bool pressed) {
++        int key = 0;
++        switch (joypad_id) {
++        case RETRO_DEVICE_ID_JOYPAD_LEFT: key = KEY_LEFT; break;
++        case RETRO_DEVICE_ID_JOYPAD_RIGHT: key = KEY_RIGHT; break;
++        case RETRO_DEVICE_ID_JOYPAD_UP: key = KEY_UP; break;
++        case RETRO_DEVICE_ID_JOYPAD_DOWN: key = KEY_DOWN; break;
++        default: return;
++        }
++        if (pressed) {
++            handle_key(key);
++            g_nav_key_down[key] = 1;
++            g_nav_key_next_ms[key] = lv_tick_get() + kNavHoldDelayMs;
++        } else {
++            g_nav_key_down[key] = 0;
++        }
++    };
++
++    // Gamepad buttons -> menu actions: A/START confirm, B/SELECT back,
++    // X/Y/L/R have no menu role. Music overlay gets raw codes first.
++    auto pad_button = [&](int joypad_id) {
++        int key = 0;
++        switch (joypad_id) {
++        case RETRO_DEVICE_ID_JOYPAD_A:
++        case RETRO_DEVICE_ID_JOYPAD_START: key = KEY_ENTER; break;
++        case RETRO_DEVICE_ID_JOYPAD_B:
++        case RETRO_DEVICE_ID_JOYPAD_SELECT: key = KEY_TAB; break;
++        default: return;
++        }
++        handle_key(key);
++    };
++
++    input_event ev {};
++    for (int i = 0; i < 32; ++i) {
++        const int fd = g_input_fd[i];
++        if (fd < 0) continue;
++
++        ssize_t n;
++        while ((n = read(fd, &ev, sizeof(ev))) == (ssize_t)sizeof(ev)) {
++            if (ev.type == EV_ABS) {
++                GamepadTranslate::DirChange ch[2];
++                const int nch = GamepadTranslate::abs_update(ev.code, ev.value, ch);
++                for (int k = 0; k < nch; ++k) {
++                    pad_dpad(ch[k].joypad_id, ch[k].pressed);
++                    if (!g_running || g_launching) {
++                        return;
++                    }
+                 }
+                 continue;
+             }
+-
+-            if (ev.value == 2 && !is_nav_repeat_key(ev.code)) {
+-                handle_key(ev.code);
+-                if (!g_running || g_launching) {
+-                    return;
++            if (ev.type == EV_KEY) {
++                const int btn_id = GamepadTranslate::btn_to_joypad(ev.code);
++                if (btn_id >= 0) {
++                    if (ev.value == 1) {
++                        pad_button(btn_id);
++                        if (!g_running || g_launching) {
++                            return;
++                        }
++                    }
++                    continue;
+                 }
+             }
++
++            if (handle_evkey(ev)) {
++                return;
++            }
++        }
++        // Device unplugged: drop the fd; the periodic rescan reopens it
++        // when it comes back.
++        if (n == 0 || (n < 0 && (errno == ENODEV || errno == EIO))) {
++            close(fd);
++            g_input_fd[i] = -1;
+         }
+     }
+ 
+@@ -1774,7 +1866,8 @@
+     g_selected_core.clear();
+     g_selected_rom.clear();
+     g_filter.clear();
+-    g_input_fds.clear();
++    g_input_fd.fill(-1);
++    rescan_input_devices();
+     g_error_overlay = nullptr;
+ 
+     lv_init();
+@@ -1784,7 +1877,6 @@
+         return false;
+     }
+ 
+-    init_ui_input_devices(g_input_fds);
+     bool resumed_to_file_picker = false;
+     if (const char *resume_env_core = std::getenv("CP0_UI_START_ENV_CORE")) {
+         if (resume_env_core[0]) {
+@@ -1809,6 +1901,7 @@
+     }
+ 
+     uint32_t last_time_update = lv_tick_get();
++    uint32_t last_input_rescan = lv_tick_get();
+ 
+     while (g_running) {
+         poll_input();
+@@ -1818,14 +1911,22 @@
+             update_time();
+             last_time_update = now;
+         }
++        if (now - last_input_rescan > 1000) {
++            rescan_input_devices();
++            last_input_rescan = now;
++        }
+         lv_timer_handler();
+         usleep(1000);
+     }
+ 
+ 
+     MusicPlayer::stop();
+-    for (int fd : g_input_fds) close(fd);
+-    g_input_fds.clear();
++    for (int &fd : g_input_fd) {
++        if (fd >= 0) {
++            close(fd);
++            fd = -1;
++        }
++    }
+ 
+     if (g_root) {
+         lv_obj_del(g_root);
+diff -ruN a/src/UI/gamepad_translate.cpp b/src/UI/gamepad_translate.cpp
+--- a/src/UI/gamepad_translate.cpp	
++++ b/src/UI/gamepad_translate.cpp	
+@@ -0,0 +1,124 @@
++#include "gamepad_translate.h"
++
++namespace {
++
++// Physical direction per axis slot (-1/0/1). Hysteresis: deflection must go
++// below 31 to register, but all the way back past 63 to release, so a value
++// hovering near the threshold cannot chatter.
++int g_axis_dir[4] = {};
++
++int axis_slot(int code)
++{
++    switch (code) {
++    case ABS_X: return 0;
++    case ABS_Y: return 1;
++    case ABS_HAT0X: return 2;
++    case ABS_HAT0Y: return 3;
++    default: return -1;
++    }
++}
++
++bool axis_is_y(int code)
++{
++    return code == ABS_Y || code == ABS_HAT0Y;
++}
++
++} // namespace
++
++namespace GamepadTranslate {
++
++int btn_to_joypad(int code)
++{
++    // Layer 1: modern pads following the kernel gamepad standard
++    // (Documentation/input/gamepad.rst - Xbox/PS layout: BTN_SOUTH=B,
++    // BTN_EAST=A, BTN_NORTH=X, BTN_WEST=Y). Covers any current-gen pad.
++    switch (code) {
++    case BTN_SOUTH: return RETRO_DEVICE_ID_JOYPAD_B;
++    case BTN_EAST: return RETRO_DEVICE_ID_JOYPAD_A;
++    case BTN_NORTH: return RETRO_DEVICE_ID_JOYPAD_X;
++    case BTN_WEST: return RETRO_DEVICE_ID_JOYPAD_Y;
++    case BTN_TL: return RETRO_DEVICE_ID_JOYPAD_L;
++    case BTN_TR: return RETRO_DEVICE_ID_JOYPAD_R;
++    case BTN_TL2: return RETRO_DEVICE_ID_JOYPAD_L2;
++    case BTN_TR2: return RETRO_DEVICE_ID_JOYPAD_R2;
++    case BTN_SELECT: return RETRO_DEVICE_ID_JOYPAD_SELECT;
++    case BTN_START: return RETRO_DEVICE_ID_JOYPAD_START;
++    case BTN_THUMBL: return RETRO_DEVICE_ID_JOYPAD_L3;
++    case BTN_THUMBR: return RETRO_DEVICE_ID_JOYPAD_R3;
++    default: break;
++    }
++
++    // Layer 2: legacy joystick codes (BTN_TRIGGER..BTN_BASE6), layout from
++    // RetroArch's community autoconfig database,
++    // profile "udev/Twin_USB_Joystick.cfg" - vendor 2064 (0x0810),
++    // product 1, exactly this pad:
++    //   A=BTN_THUMB B=BTN_THUMB2 X=BTN_TRIGGER Y=BTN_TOP,
++    //   L=BTN_BASE R=BTN_BASE2 L2=BTN_TOP2 R2=BTN_PINKIE,
++    //   SELECT=BTN_BASE3 START=BTN_BASE4.
++    switch (code) {
++    case BTN_TRIGGER: return RETRO_DEVICE_ID_JOYPAD_X;
++    case BTN_THUMB: return RETRO_DEVICE_ID_JOYPAD_A;
++    case BTN_THUMB2: return RETRO_DEVICE_ID_JOYPAD_B;
++    case BTN_TOP: return RETRO_DEVICE_ID_JOYPAD_Y;
++    case BTN_TOP2: return RETRO_DEVICE_ID_JOYPAD_L2;
++    case BTN_PINKIE: return RETRO_DEVICE_ID_JOYPAD_R2;
++    case BTN_BASE: return RETRO_DEVICE_ID_JOYPAD_L;
++    case BTN_BASE2: return RETRO_DEVICE_ID_JOYPAD_R;
++    case BTN_BASE3: return RETRO_DEVICE_ID_JOYPAD_SELECT;
++    case BTN_BASE4: return RETRO_DEVICE_ID_JOYPAD_START;
++    default: return -1;
++    }
++}
++
++int abs_update(int code, int value, DirChange out[2])
++{
++    const int slot = axis_slot(code);
++    if (slot < 0) return 0;
++
++    const bool hat = code == ABS_HAT0X || code == ABS_HAT0Y;
++    int dir = 0;
++    if (hat) {
++        dir = value; // -1 / 0 / 1
++    } else if (g_axis_dir[slot] == -1) {
++        dir = value <= 63 ? -1 : 0;
++    } else if (g_axis_dir[slot] == 1) {
++        dir = value >= 191 ? 1 : 0;
++    } else {
++        if (value <= 31) dir = -1;
++        else if (value >= 223) dir = 1;
++    }
++
++    const int prev = g_axis_dir[slot];
++    if (dir == prev) return 0;
++    g_axis_dir[slot] = dir;
++
++    const int neg = axis_is_y(code) ? RETRO_DEVICE_ID_JOYPAD_UP
++                                    : RETRO_DEVICE_ID_JOYPAD_LEFT;
++    const int pos = axis_is_y(code) ? RETRO_DEVICE_ID_JOYPAD_DOWN
++                                    : RETRO_DEVICE_ID_JOYPAD_RIGHT;
++
++    // Emit only the directions that actually change: release whatever was
++    // held, press the new one. A direct -1 -> +1 swing yields both.
++    int n = 0;
++    if (prev < 0) {
++        out[n].joypad_id = neg;
++        out[n].pressed = false;
++        ++n;
++    } else if (prev > 0) {
++        out[n].joypad_id = pos;
++        out[n].pressed = false;
++        ++n;
++    }
++    if (dir < 0) {
++        out[n].joypad_id = neg;
++        out[n].pressed = true;
++        ++n;
++    } else if (dir > 0) {
++        out[n].joypad_id = pos;
++        out[n].pressed = true;
++        ++n;
++    }
++    return n;
++}
++
++} // namespace GamepadTranslate
+diff -ruN a/src/UI/gamepad_translate.h b/src/UI/gamepad_translate.h
+--- a/src/UI/gamepad_translate.h	
++++ b/src/UI/gamepad_translate.h	
+@@ -0,0 +1,30 @@
++#ifndef CP0_GAMEPAD_TRANSLATE_H
++#define CP0_GAMEPAD_TRANSLATE_H
++
++#include <linux/input.h>
++#include "libretro.h"
++
++// Native gamepad support, RetroArch-style: USB HID pads report BTN_* buttons
++// and ABS axes (D-pad as ABS_X/ABS_Y 0..255 or ABS_HAT0X/HAT0Y -1..1); this
++// module classifies those events into Libretro joypad ids. Nothing here
++// synthesizes keyboard events - the UI and EvdevInput consume joypad ids
++// directly, so the pad keeps its own layout instead of faking the Cardputer
++// keyboard.
++namespace GamepadTranslate {
++
++// Libretro joypad id for a gamepad button, or -1 when the EV_KEY code does
++// not belong to the pad (keyboard keys pass through unmapped).
++int btn_to_joypad(int code);
++
++// Hysteresis state machine for one D-pad axis report. Emits 0..2 direction
++// changes (a swing L->R without centering releases LEFT and presses RIGHT
++// atomically). Direction ids are RETRO_DEVICE_ID_JOYPAD_LEFT/RIGHT/UP/DOWN.
++struct DirChange {
++    int joypad_id;
++    bool pressed;
++};
++int abs_update(int code, int value, DirChange out[2]);
++
++} // namespace GamepadTranslate
++
++#endif // CP0_GAMEPAD_TRANSLATE_H
+diff -ruN a/src/UI/music_player.cpp b/src/UI/music_player.cpp
+--- a/src/UI/music_player.cpp	
++++ b/src/UI/music_player.cpp	
+@@ -211,9 +211,11 @@
+         update_status();
+         return;
+     case KEY_F: // launcher UP: previous track
++    case KEY_UP:
+         spawn_track(g_music.index > 0 ? g_music.index - 1 : 0);
+         return;
+     case KEY_X: // launcher DOWN: next track
++    case KEY_DOWN:
+         if (!spawn_next()) stop();
+         return;
+     default:

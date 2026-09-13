@@ -1,0 +1,12 @@
+diff -ruN a/src/UI/app_ui.cpp b/src/UI/app_ui.cpp
+--- a/src/UI/app_ui.cpp	
++++ b/src/UI/app_ui.cpp	
+@@ -876,7 +876,7 @@
+         bool active = static_cast<int>(i) == g_console_index;
+         int size = active ? 10 : 5;
+         lv_obj_set_size(g_dots[i], size, size);
+-        lv_obj_set_pos(g_dots[i], start_x + static_cast<int>(i) * 12, 148 + (active ? 0 : 2));
++        lv_obj_set_pos(g_dots[i], start_x + static_cast<int>(i) * 12, 180 + (active ? 0 : 2));
+         lv_obj_set_style_bg_color(g_dots[i], lv_color_hex(active ? accent : 0x3A3A3A),
+                                   LV_PART_MAIN | LV_STATE_DEFAULT);
+         lv_obj_set_style_border_color(g_dots[i], lv_color_hex(active ? accent : 0x3A3A3A),
